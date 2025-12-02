@@ -58,7 +58,7 @@ export class SincronizacionService {
         const rawData = await this.dataSourceLegacy.query(`
         SELECT 
             D.DOCID, D.NUMERO, D.SERIE, D.FECHA, C.NOMBRE AS CLIENTE,
-            I.ARTICULOID,I.CLVPROV, I.CLAVE, I.DESCRIPCIO, I.CODBAR, DS.DESCANTIDAD, A.UBICACION
+            I.ARTICULOID,I.CLVPROV, I.CLAVE, I.DESCRIPCIO, I.CODBAR, I.XIMAGEN2, DS.DESCANTIDAD, A.UBICACION
         FROM DOC D
         JOIN DES DS ON D.DOCID = DS.DESDOCID
         JOIN INV I ON DS.DESARTID = I.ARTICULOID
@@ -173,12 +173,14 @@ export class SincronizacionService {
               nombre: item.DESCRIPCIO,
               ubicacion: item.UBICACION,
               zonaAsignada: zona,
-              idExterno: item.ARTICULOID
+              idExterno: item.ARTICULOID,
+              img: item.XIMAGEN2
             });
             await queryRunner.manager.save(producto);
           } else {
-             if (producto.ubicacion !== item.UBICACION) {
+             if (producto.ubicacion !== item.UBICACION || producto.img !== item.XIMAGEN2) {
                producto.ubicacion = item.UBICACION;
+               producto.img = item.XIMAGEN2;
                await queryRunner.manager.save(producto);
              }
           }

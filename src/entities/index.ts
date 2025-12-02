@@ -117,6 +117,9 @@ export class Producto {
   @Column()
   ubicacion: string;
 
+  @Column()
+  img: string;
+
   @Column({ name: 'zona_asignada', type: 'enum', enum: Zona })
   zonaAsignada: Zona;
   
