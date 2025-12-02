@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { ControlSincronizacion, DetallePedido, Pedido, Producto, ProductoCodigo, StatusGlobal, Zona } from 'src/entities';
+import { EventsGateway } from 'src/events/events.gateway';
 import { DataSource, In, Not, Repository } from 'typeorm';
 
 
@@ -26,6 +27,8 @@ export class SincronizacionService {
     
     // Conexión a BD Legacy (Lectura - datosb)
     @InjectDataSource('legacy_db') private dataSourceLegacy: DataSource,
+
+    private eventsGateway: EventsGateway
   ) {}
 
   // Se ejecuta cada 60 segundos
@@ -123,7 +126,7 @@ export class SincronizacionService {
           codigosExtraMap.set(cod.ARTICULOID, lista);
         }
         
-        // Ahora 'lista' seguro es un array, podemos hacer push sin error
+        
         lista.push(cod);
       });
     }
@@ -223,7 +226,7 @@ export class SincronizacionService {
         });
 
         const pedidoGuardado = await queryRunner.manager.save(nuevoPedido);
-
+        
         for (const det of detallesAGuardar) {
           const linea = queryRunner.manager.create(DetallePedido, {
             pedido: pedidoGuardado,
@@ -233,6 +236,9 @@ export class SincronizacionService {
           });
           await queryRunner.manager.save(linea);
         }
+
+        // Emitir evento Nuevo Pedido
+        this.eventsGateway.emitirNuevoPedido(nuevoPedido);
 
         if (docId > maxProcesado) maxProcesado = docId;
       }
@@ -246,6 +252,7 @@ export class SincronizacionService {
       }
 
       await queryRunner.commitTransaction();
+      
       this.logger.log(`Importación completada. Último DOCID: ${maxProcesado}`);
 
     } catch (err) {
@@ -306,6 +313,15 @@ export class SincronizacionService {
         );
         
         this.logger.log(`Se cerraron ${idsFacturados.length} pedidos remotamente (Facturados en Legacy).`);
+
+        // 4. Notificar por WebSocket para que los paneles se actualicen en tiempo real.
+        // Buscamos los pedidos que acabamos de cerrar para obtener sus IDs internos.
+        const pedidosCerrados = pedidosActivos.filter(p => idsFacturados.includes(p.idExternoDoc));
+
+        // Emitimos un evento por cada uno.
+        for (const pedido of pedidosCerrados) {
+          this.eventsGateway.emitirCambioEstado({ idPedido: pedido.id, nuevoEstado: StatusGlobal.COMPLETADO });
+        }
       }
     }
   }

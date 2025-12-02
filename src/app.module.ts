@@ -5,6 +5,8 @@ import { SincronizacionModule } from './sincronizacion/sincronizacion.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AlmacenUser, ControlSincronizacion, DetallePedido, Pedido, Producto, ProductoCodigo } from './entities';
+import { EventsGateway } from './events/events.gateway';
+import { MetricasModule } from './metricas/metricas.module';
 
 @Module({
   imports: [
@@ -40,8 +42,9 @@ import { AlmacenUser, ControlSincronizacion, DetallePedido, Pedido, Producto, Pr
     // 4. Módulos de Funcionalidad
     PedidosModule,
     SincronizacionModule,
+    MetricasModule,
   ],
   controllers: [ ],
-  providers: [ ],
+  providers: [ EventsGateway],
 })
 export class AppModule {}
