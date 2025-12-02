@@ -46,6 +46,19 @@ export class PedidosController {
     });
   }
 
+  @Get('en-surtido')
+  @ApiOperation({ summary: 'Obtener pedidos que se están surtiendo actualmente' })
+  async getPedidosEnSurtido() {
+    return this.pedidoRepo.find({
+      where: {
+        statusGlobal: In([StatusGlobal.EN_SURTIDO_CC, StatusGlobal.EN_SURTIDO_AG]),
+      },
+      // Incluimos las relaciones para poder ver el nombre de quién surte
+      relations: ['surtidorCc', 'surtidorAg'], 
+      order: { fechaCreacion: 'ASC' }
+    });
+  }
+
   @Get(':id/detalle')
   @ApiOperation({ summary: 'Ver productos de un pedido específico' })
   async getDetalle(@Param('id') id: number) {
