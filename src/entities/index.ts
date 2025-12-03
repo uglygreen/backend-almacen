@@ -172,6 +172,9 @@ export class Pedido {
   @Column()
   serie: string;
 
+  @Column()
+  clatexto: string;
+
   // Relaciones con usuarios (Surtidores)
   @Column({ name: 'surtidor_cc_id', nullable: true })
   surtidorCcId: number;

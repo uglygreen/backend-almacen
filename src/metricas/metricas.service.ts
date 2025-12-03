@@ -52,7 +52,7 @@ export class MetricasService {
     const zonaEnum = zona === 'CC' ? 'CUARTO_CHICO' : 'ALMACEN_GRAL';
 
     // Generamos las columnas dinámicas para las horas de 9 a 19
-    const horas = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+    const horas = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
     const selectHoras = horas.map(h => `
       COUNT(DISTINCT CASE WHEN HOUR(p.${campoFechaFin}) = ${h} THEN p.id END) as ped_${h},
       COUNT(CASE WHEN HOUR(p.${campoFechaFin}) = ${h} THEN dp.id END) as prod_${h}

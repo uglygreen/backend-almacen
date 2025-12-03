@@ -58,13 +58,15 @@ export class SincronizacionService {
         const rawData = await this.dataSourceLegacy.query(`
         SELECT 
             D.DOCID, D.NUMERO, D.SERIE, D.FECHA, C.NOMBRE AS CLIENTE,
-            I.ARTICULOID,I.CLVPROV, I.CLAVE, I.DESCRIPCIO, I.CODBAR, I.XIMAGEN2, DS.DESCANTIDAD, A.UBICACION
+            I.ARTICULOID,I.CLVPROV, I.CLAVE, I.DESCRIPCIO, I.CODBAR, I.XIMAGEN2, DS.DESCANTIDAD, A.UBICACION, CLA.CLATEXTO
         FROM DOC D
         JOIN DES DS ON D.DOCID = DS.DESDOCID
         JOIN INV I ON DS.DESARTID = I.ARTICULOID
         LEFT JOIN ALM A ON I.ARTICULOID = A.ARTICULOID AND A.ALMACEN = 1
         JOIN CLI C ON D.CLIENTEID = C.CLIENTEID
-        WHERE D.TIPO = 'C' AND D.ESTADO= 'A' AND D.DOCID > ?
+        LEFT OUTER JOIN CARCLI CAR ON D.CLIENTEID = CAR.CARID
+        LEFT OUTER JOIN CLA ON CAR.CARACTERISTICA = CLA.CLAID
+        WHERE D.TIPO = 'C' AND D.ESTADO= 'A' AND CLA.CLATEXTO IN ('01', '02') AND D.DOCID > ?
         ORDER BY D.DOCID ASC
         LIMIT 100
         `, [ultimoId]);
@@ -224,6 +226,7 @@ export class SincronizacionService {
           clienteNombre: items[0].CLIENTE,
           fechaCreacion: items[0].FECHA || new Date(),
           requiereCuartoChico: requiereCuartoChico,
+          clatexto: items[0].CLATEXTO == '01' ? 'TX' : 'QRO',
           statusGlobal: requiereCuartoChico ? StatusGlobal.ESPERA_CC : StatusGlobal.PENDIENTE_AG
         });
 
