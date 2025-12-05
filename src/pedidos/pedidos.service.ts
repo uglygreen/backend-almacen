@@ -45,7 +45,16 @@ export class PedidosService {
       order: { fechaCreacion: 'ASC' },
     });
   }
-
+  getPedidosEnSurtidoById(id: number) {
+    return this.pedidoRepo.find({
+      where: {
+        id,
+        statusGlobal: In([StatusGlobal.EN_SURTIDO_CC, StatusGlobal.EN_SURTIDO_AG]),
+      },
+      relations: ['surtidorCc', 'surtidorAg'],
+      order: { fechaCreacion: 'ASC' },
+    });
+  }
   getPedidosCompletadosHoy() {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);

@@ -33,6 +33,13 @@ export class PedidosController {
     return this.pedidosService.getPedidosEnSurtido();
   }
 
+  @Get('en-surtido/:id')
+  @ApiOperation({ summary: 'Obtener pedidos que este surtiendo un almacenista' })
+  async getPedidosEnSurtidoById(@Param('id') id: number) {
+    return this.pedidosService.getPedidosEnSurtidoById(id);
+  }
+
+
   @Get('completados-hoy')
   @ApiOperation({ summary: 'Obtener pedidos completados en el día actual' })
   async getPedidosCompletadosHoy() {
