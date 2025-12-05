@@ -31,6 +31,16 @@ export class ActualizarLineaDto {
   nota?: string;
 }
 
+export class EmpaquetarPedidoDto {
+  @ApiProperty({
+    description: 'Número total de bultos o cajas para el pedido.',
+    example: 3,
+  })
+  @IsInt()
+  @Min(1)
+  numeroDeBultos: number;
+}
+
 export class FinalizarEtapaDto {
   @ApiProperty({ enum: ['CC', 'AG'] })
   @IsString()
