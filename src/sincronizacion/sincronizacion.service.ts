@@ -51,7 +51,7 @@ export class SincronizacionService {
         await this.controlRepo.save(control);
         }
 
-        const ultimoId = control.ultimoDocId;
+        const ultimoId = control.ultimoDocId - 500;
 
         // 2. Consultar BD Legacy para obtener solo los IDs de los nuevos pedidos.
         const nuevosPedidosRaw = await this.dataSourceLegacy.query(`
