@@ -57,7 +57,7 @@ export class PedidosService {
           statusGlobal: StatusGlobal.EN_SURTIDO_AG,
         },
       ],
-      relations: ['surtidorCc', 'surtidorAg'],
+      relations: ['surtidorCc', 'surtidorAg','detalles', 'detalles.producto', 'detalles.producto.codigos'],
       order: { fechaCreacion: 'ASC' },
     });
   }
