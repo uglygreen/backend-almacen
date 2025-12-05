@@ -133,6 +133,17 @@ export class SincronizacionService {
       });
     }
 
+    // --- VALIDACIÓN ANTI-DUPLICADOS ---
+    // 1. Obtenemos todos los DOCID del lote actual.
+    const docIdsDelLote = Array.from(pedidosMap.keys());
+    
+    // 2. Consultamos cuáles de esos IDs ya existen en nuestra BD.
+    const pedidosYaExistentes = await this.dataSourceSistemas.getRepository(Pedido).find({
+      where: { idExternoDoc: In(docIdsDelLote) },
+      select: ['idExternoDoc']
+    });
+    const idsYaExistentes = new Set(pedidosYaExistentes.map(p => p.idExternoDoc));
+
     const queryRunner = this.dataSourceSistemas.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -144,6 +155,14 @@ export class SincronizacionService {
       let maxProcesado = ultimoId;
 
       for (const [docId, items] of pedidosMap) {
+        // 3. Si el DOCID actual ya existe, lo saltamos.
+        if (idsYaExistentes.has(docId)) {
+          this.logger.debug(`Saltando DOCID ${docId} porque ya existe (id_externo_doc).`);
+          // Nos aseguramos de que el contador de último ID avance de todas formas.
+          if (docId > maxProcesado) maxProcesado = docId;
+          continue;
+        }
+
         let requiereCuartoChico = false;
         const detallesAGuardar: DetalleTemp[] = [];
 
