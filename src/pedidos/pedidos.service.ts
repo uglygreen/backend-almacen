@@ -47,10 +47,16 @@ export class PedidosService {
   }
   getPedidosEnSurtidoById(id: number) {
     return this.pedidoRepo.find({
-      where: {
-        id,
-        statusGlobal: In([StatusGlobal.EN_SURTIDO_CC, StatusGlobal.EN_SURTIDO_AG]),
-      },
+      where: [
+        {
+          surtidorCcId: id,
+          statusGlobal: StatusGlobal.EN_SURTIDO_CC,
+        },
+        {
+          surtidorAgId: id,
+          statusGlobal: StatusGlobal.EN_SURTIDO_AG,
+        },
+      ],
       relations: ['surtidorCc', 'surtidorAg'],
       order: { fechaCreacion: 'ASC' },
     });
