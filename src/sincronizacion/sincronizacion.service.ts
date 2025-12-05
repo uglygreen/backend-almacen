@@ -53,26 +53,21 @@ export class SincronizacionService {
 
         const ultimoId = control.ultimoDocId;
 
-        // 2. Consultar BD Legacy (La consulta SQL que diseñamos)
-        // NOTA: Usamos parámetros (?) para evitar inyección SQL, aunque sea interna
-        const rawData = await this.dataSourceLegacy.query(`
-        SELECT 
-            D.DOCID, D.NUMERO, D.SERIE, D.FECHA, C.NOMBRE AS CLIENTE,
-            I.ARTICULOID,I.CLVPROV, I.CLAVE, I.DESCRIPCIO, I.CODBAR, I.XIMAGEN2, DS.DESCANTIDAD, A.UBICACION, CLA.CLATEXTO
+        // 2. Consultar BD Legacy para obtener solo los IDs de los nuevos pedidos.
+        const nuevosPedidosRaw = await this.dataSourceLegacy.query(`
+        SELECT DISTINCT D.DOCID
         FROM DOC D
-        JOIN DES DS ON D.DOCID = DS.DESDOCID
-        JOIN INV I ON DS.DESARTID = I.ARTICULOID
-        LEFT JOIN ALM A ON I.ARTICULOID = A.ARTICULOID AND A.ALMACEN = 1
         JOIN CLI C ON D.CLIENTEID = C.CLIENTEID
         LEFT OUTER JOIN CARCLI CAR ON D.CLIENTEID = CAR.CARID
         LEFT OUTER JOIN CLA ON CAR.CARACTERISTICA = CLA.CLAID
-        WHERE D.TIPO = 'C' AND D.ESTADO= 'A' AND CLA.CLATEXTO IN ('01', '02') AND D.DOCID > ?
+        WHERE D.TIPO = 'C' AND D.ESTADO= 'A' AND D.FECHA = CURDATE() AND CLA.CLATEXTO IN ('01', '02') AND D.DOCID > ?
         ORDER BY D.DOCID ASC
-        LIMIT 500
+        LIMIT 100
         `, [ultimoId]);
 
-        if (rawData.length > 0) {
-            await this.procesarNuevosPedidos(rawData, ultimoId);
+        if (nuevosPedidosRaw.length > 0) {
+            const docIds = nuevosPedidosRaw.map((p: { DOCID: number }) => p.DOCID);
+            await this.procesarPedidosPorIds(docIds, ultimoId);
         } else {
             this.logger.log('No hay pedidos nuevos por importar.');
         }
@@ -89,29 +84,24 @@ export class SincronizacionService {
     }
 
 
-    // Lógica separada para procesar la importación
-  private async procesarNuevosPedidos(rawData: any[], ultimoId: number) {
-    const pedidosMap = new Map<number, any[]>();
+  private async procesarPedidosPorIds(docIds: number[], ultimoId: number) {
+    this.logger.log(`Se encontraron ${docIds.length} pedidos para procesar.`);
 
-     // Recolectamos IDs únicos de artículos para consultar sus códigos extra de una sola vez
+    // 1. Recolectamos IDs únicos de artículos de TODOS los pedidos nuevos para optimizar consultas.
     const articuloIds = new Set<number>();
-
-    rawData.forEach((row: any) => {
-      let items = pedidosMap.get(row.DOCID);
-      if (!items) {
-        items = [];
-        pedidosMap.set(row.DOCID, items);
-      }
-      items.push(row);
-
-        if (row.ARTICULOID) articuloIds.add(row.ARTICULOID);
-    });
+    if (docIds.length > 0) {
+      const itemsDePedidos = await this.dataSourceLegacy.query(`
+        SELECT DS.DESARTID as ARTICULOID FROM DES DS WHERE DS.DESDOCID IN (${docIds.join(',')})
+      `);
+      itemsDePedidos.forEach((item: { ARTICULOID: number }) => {
+        if (item.ARTICULOID) articuloIds.add(item.ARTICULOID);
+      });
+    }
 
      // --- NUEVO: CONSULTA DE CÓDIGOS DE EMPAQUETADO (Tabla COD) ---
     const codigosExtraMap = new Map<number, any[]>();
     if (articuloIds.size > 0) {
       const idsArray = Array.from(articuloIds);
-      // Nota: Si son muchísimos IDs, habría que paginar esto, pero con LIMIT 100 pedidos es seguro.
       const codigosData = await this.dataSourceLegacy.query(`
         SELECT ARTICULOID, CODIGO, PREFIJO 
         FROM COD 
@@ -133,32 +123,48 @@ export class SincronizacionService {
       });
     }
 
-    // --- VALIDACIÓN ANTI-DUPLICADOS ---
-    // 1. Obtenemos todos los DOCID del lote actual.
-    const docIdsDelLote = Array.from(pedidosMap.keys());
-    
+    // --- VALIDACIÓN ANTI-DUPLICADOS ---    
     // 2. Consultamos cuáles de esos IDs ya existen en nuestra BD.
     const pedidosYaExistentes = await this.dataSourceSistemas.getRepository(Pedido).find({
-      where: { idExternoDoc: In(docIdsDelLote) },
+      where: { idExternoDoc: In(docIds) },
       select: ['idExternoDoc']
     });
     const idsYaExistentes = new Set(pedidosYaExistentes.map(p => p.idExternoDoc));
 
-    const queryRunner = this.dataSourceSistemas.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
     // Control para no procesar códigos del mismo producto múltiples veces en el mismo lote
     const productosProcesadosEnLote = new Set<number>();
+    let maxProcesado = ultimoId;
 
-    try {
-      let maxProcesado = ultimoId;
-
-      for (const [docId, items] of pedidosMap) {
-        // 3. Si el DOCID actual ya existe, lo saltamos.
+    for (const docId of docIds) {
+        // Si el DOCID actual ya existe, lo saltamos.
         if (idsYaExistentes.has(docId)) {
           this.logger.debug(`Saltando DOCID ${docId} porque ya existe (id_externo_doc).`);
-          // Nos aseguramos de que el contador de último ID avance de todas formas.
+          if (docId > maxProcesado) maxProcesado = docId;
+          continue;
+        }
+
+        const queryRunner = this.dataSourceSistemas.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+        // Obtenemos todos los detalles para ESTE pedido
+        const items = await this.dataSourceLegacy.query(`
+            SELECT 
+                D.DOCID, D.NUMERO, D.SERIE, D.FECHA, C.NOMBRE AS CLIENTE,
+                I.ARTICULOID,I.CLVPROV, I.CLAVE, I.DESCRIPCIO, I.CODBAR, I.XIMAGEN2, DS.DESCANTIDAD, A.UBICACION, CLA.CLATEXTO
+            FROM DOC D
+            JOIN DES DS ON D.DOCID = DS.DESDOCID
+            JOIN INV I ON DS.DESARTID = I.ARTICULOID
+            LEFT JOIN ALM A ON I.ARTICULOID = A.ARTICULOID AND A.ALMACEN = 1
+            JOIN CLI C ON D.CLIENTEID = C.CLIENTEID
+            LEFT OUTER JOIN CARCLI CAR ON D.CLIENTEID = CAR.CARID
+            LEFT OUTER JOIN CLA ON CAR.CARACTERISTICA = CLA.CLAID
+            WHERE D.DOCID = ?
+        `, [docId]);
+
+        if (items.length === 0) {
+          this.logger.warn(`DOCID ${docId} no retornó detalles, saltando.`);
           if (docId > maxProcesado) maxProcesado = docId;
           continue;
         }
@@ -264,26 +270,28 @@ export class SincronizacionService {
         // Emitir evento Nuevo Pedido
         this.eventsGateway.emitirNuevoPedido(nuevoPedido);
 
-        if (docId > maxProcesado) maxProcesado = docId;
+        if (docId > maxProcesado) {
+            maxProcesado = docId;
+        }
+
+        await queryRunner.commitTransaction();
+        this.logger.log(`Pedido con DOCID ${docId} importado correctamente.`);
+
+      } catch (err) {
+        this.logger.error(`Error en transacción para DOCID ${docId}`, err);
+        await queryRunner.rollbackTransaction();
+      } finally {
+        await queryRunner.release();
       }
+    }
 
-      // Actualizamos control
-      const control = await queryRunner.manager.findOne(ControlSincronizacion, { where: { id: 1 } });
-      if (control) {
-        control.ultimoDocId = maxProcesado;
-        control.fechaEjecucion = new Date();
-        await queryRunner.manager.save(control);
-      }
-
-      await queryRunner.commitTransaction();
-      
-      this.logger.log(`Importación completada. Último DOCID: ${maxProcesado}`);
-
-    } catch (err) {
-      this.logger.error('Error en transacción de importación', err);
-      await queryRunner.rollbackTransaction();
-    } finally {
-      await queryRunner.release();
+    // Actualizamos control al final de todo el lote
+    const control = await this.controlRepo.findOne({ where: { id: 1 } });
+    if (control) {
+      control.ultimoDocId = maxProcesado;
+      control.fechaEjecucion = new Date();
+      await this.controlRepo.save(control);
+      this.logger.log(`Sincronización de lote completada. Último DOCID procesado: ${maxProcesado}`);
     }
   }
 
