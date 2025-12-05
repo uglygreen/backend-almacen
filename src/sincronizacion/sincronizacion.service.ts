@@ -75,6 +75,9 @@ export class SincronizacionService {
         // --- PASO 2: VERIFICAR SI PEDIDOS ACTIVOS YA FUERON FACTURADOS (ESTADO F) ---
         await this.verificarPedidosFacturados();
 
+        // --- PASO 3: VERIFICAR SI PEDIDOS ACTIVOS FUERON CANCELADOS (ESTADO C) ---
+        await this.verificarPedidosCancelados();
+
         } catch (err) {
         this.logger.error('Error general en sincronización', err);
         } finally {
@@ -302,7 +305,7 @@ export class SincronizacionService {
     
     const pedidosActivos = await pedidoRepo.find({
       where: {
-        statusGlobal: Not(In([StatusGlobal.COMPLETADO, StatusGlobal.EMPAQUETADO]))
+        statusGlobal: Not(In([StatusGlobal.COMPLETADO, StatusGlobal.EMPAQUETADO, StatusGlobal.CANCELADO]))
       },
       select: ['id', 'idExternoDoc'] // Solo necesitamos los IDs
     });
@@ -353,6 +356,64 @@ export class SincronizacionService {
         // Emitimos un evento por cada uno.
         for (const pedido of pedidosCerrados) {
           this.eventsGateway.emitirCambioEstado({ idPedido: pedido.id, nuevoEstado: StatusGlobal.COMPLETADO });
+        }
+      }
+    }
+  }
+
+  private async verificarPedidosCancelados() {
+    const pedidoRepo = this.dataSourceSistemas.getRepository(Pedido);
+    
+    // 1. Buscamos pedidos que no estén ya en un estado final (Completado, Empaquetado o Cancelado)
+    const pedidosActivos = await pedidoRepo.find({
+      where: {
+        statusGlobal: Not(In([
+          StatusGlobal.COMPLETADO, 
+          StatusGlobal.EMPAQUETADO,
+          StatusGlobal.CANCELADO
+        ]))
+      },
+      select: ['id', 'idExternoDoc']
+    });
+
+    if (pedidosActivos.length === 0) return;
+
+    const idsExternos = pedidosActivos
+      .map(p => p.idExternoDoc)
+      .filter(id => id !== null && id !== undefined);
+
+    if (idsExternos.length === 0) return;
+
+    const chunkSize = 100;
+    for (let i = 0; i < idsExternos.length; i += chunkSize) {
+      const chunk = idsExternos.slice(i, i + chunkSize);
+      
+      if (chunk.length === 0) continue;
+
+      // 2. Consultamos en Legacy cuáles de estos IDs tienen ESTADO = 'C' (Cancelado)
+      const idsString = chunk.join(',');
+      const cancelados = await this.dataSourceLegacy.query(`
+        SELECT DOCID FROM DOC 
+        WHERE DOCID IN (${idsString}) AND ESTADO = 'C'
+      `);
+
+      if (cancelados.length > 0) {
+        const idsCancelados = cancelados.map((c: any) => c.DOCID);
+        
+        await pedidoRepo.update(
+          { idExternoDoc: In(idsCancelados) },
+          { statusGlobal: StatusGlobal.CANCELADO }
+        );
+        
+        this.logger.log(`Se marcaron como cancelados ${idsCancelados.length} pedidos (Cancelados en Legacy).`);
+
+        // 4. Notificar por WebSocket para que los paneles se actualicen en tiempo real.
+        // Buscamos los pedidos que acabamos de cerrar para obtener sus IDs internos.
+        const pedidosCancelados = pedidosActivos.filter(p => idsCancelados.includes(p.idExternoDoc));
+
+        // Emitimos un evento por cada uno.
+        for (const pedido of pedidosCancelados) {
+          this.eventsGateway.emitirCambioEstado({ idPedido: pedido.id, nuevoEstado: StatusGlobal.CANCELADO });
         }
       }
     }

@@ -17,6 +17,7 @@ export enum StatusGlobal {
   EN_SURTIDO_AG = 'EN_SURTIDO_ALMACEN',
   COMPLETADO = 'SURTIDO_COMPLETO',
   EMPAQUETADO = 'EMPAQUETADO',
+  CANCELADO = 'CANCELADO',
 }
 
 export enum StatusLinea {
