@@ -32,7 +32,7 @@ export class SincronizacionService {
   ) {}
 
   // Se ejecuta cada 60 segundos
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron(CronExpression.EVERY_30_SECONDS)
   async sincronizarPedidos() {
 
      if (this.isSyncing) {
