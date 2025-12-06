@@ -251,17 +251,23 @@ export class PedidosService {
     const newWidth = doc.page.height;
     const newHeight = doc.page.width;
 
+    const yInicial = doc.y;
+
     // Título y número de bulto en la misma "fila"
-    doc.fontSize(16).font('Helvetica-Bold').text('FERREMAYORISTAS DEL BAJIO', 0, 20, { width: newWidth, align: 'center' });
-    doc.fontSize(12).font('Helvetica-Bold').text(`${bultoActual}/${totalBultos}`, 0, 22, { width: newWidth - 20, align: 'right' });
+    doc.fontSize(16).font('Helvetica-Bold').text('FERREMAYORISTAS DEL BAJIO', 0, yInicial, { width: newWidth, align: 'center' });
+    doc.fontSize(12).font('Helvetica-Bold').text(`${bultoActual}/${totalBultos}`, 0, yInicial + 2, { width: newWidth - 20, align: 'right' });
     doc.moveDown(1);
 
-    doc.fontSize(10).font('Helvetica').text(`Pedido: ${pedido.serie}-${pedido.folioExterno}`, 0, 20, { width: newWidth, align: 'center' });
+    // Folio y fecha en la misma "fila"
+    const yFolio = doc.y;
+    doc.fontSize(10).font('Helvetica').text(`Pedido: ${pedido.serie}-${pedido.folioExterno}`, 0, yFolio, { width: newWidth, align: 'center' });
     const fecha = new Date().toLocaleString('es-MX');
-    doc.fontSize(8).font('Helvetica-Oblique').text(fecha, 0, 22, { width: newWidth, align: 'right' });
-    doc.moveDown(1);
+    doc.fontSize(8).font('Helvetica-Oblique').text(fecha, 0, yFolio + 1, { width: newWidth - 20, align: 'right' });
+    doc.moveDown(2);
 
-    doc.fontSize(12).font('Helvetica-Bold').text('CLIENTE:', 15, doc.y, { continued: true }).font('Helvetica').text(` ${pedido.clienteNombre}`, { width: newWidth, align: 'center' });
+    // Cliente centrado
+    doc.fontSize(12).font('Helvetica-Bold').text('CLIENTE:', { align: 'center' });
+    doc.font('Helvetica').text(`${pedido.clienteNombre}`, { align: 'center' });
     doc.moveDown(2);
 
     // --- Generación y adición del código de barras ---
@@ -269,14 +275,15 @@ export class PedidosService {
     const pngBuffer = await bwipjs.toBuffer({
       bcid: 'code128', // Tipo de código de barras
       text: barcodeText, // Texto a codificar
-      scale: 2, // Escala reducida
+      scale: 2, // Escala
       height: 15, // Altura en mm
       includetext: true, // Incluir texto legible
       textxalign: 'center', // Alineación del texto
     });
 
-    // Posicionamos el código de barras a la izquierda
-    doc.image(pngBuffer, 15, doc.y, { width: 150, align: 'center' });
+    // Centramos la imagen del código de barras
+    const barcodeWidth = 180;
+    doc.image(pngBuffer, (newWidth - barcodeWidth) / 2, doc.y, { width: barcodeWidth, align: 'center' });
     doc.moveDown(1);
 
     
