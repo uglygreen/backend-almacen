@@ -5,6 +5,7 @@ import { In, IsNull, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { EventsGateway } from 'src/events/events.gateway';
 import { ActualizarLineaDto, AsignarPedidoDto, AsignarSiguienteDto, EmpaquetarPedidoDto, FinalizarEtapaDto } from './dto/pedidos.dto';
 import PDFDocument from 'pdfkit';
+import bwipjs from 'bwip-js';
 
 @Injectable()
 export class PedidosService {
@@ -213,7 +214,7 @@ export class PedidosService {
     return pdfBuffer;
   }
 
-  private generarPdfTickets(pedido: Pedido, numeroDeBultos: number): Promise<Buffer> {    
+  private async generarPdfTickets(pedido: Pedido, numeroDeBultos: number): Promise<Buffer> {
     const doc = new PDFDocument({
       size: [226, 400], // Ancho y alto en puntos (8cm ~ 226pt)
       margins: { top: 10, bottom: 10, left: 15, right: 15 },
@@ -223,7 +224,7 @@ export class PedidosService {
       if (i > 1) {
         doc.addPage();
       }
-      this.crearTicket(doc, pedido, i, numeroDeBultos);
+      await this.crearTicket(doc, pedido, i, numeroDeBultos);
     }
 
     // Convertir el PDF a un Buffer en memoria
@@ -238,20 +239,48 @@ export class PedidosService {
     });
   }
 
-  private crearTicket(doc: PDFKit.PDFDocument, pedido: Pedido, bultoActual: number, totalBultos: number) {
-    doc.fontSize(16).font('Helvetica-Bold').text('FERREMAYORISTAS DEL BAJIO', { align: 'center' });
+  private async crearTicket(doc: PDFKit.PDFDocument, pedido: Pedido, bultoActual: number, totalBultos: number) {
+    doc.save(); // Guardamos el estado actual para no afectar otras páginas
+
+    // Rotamos el lienzo -90 grados y lo trasladamos para que el origen (0,0)
+    // quede en la nueva esquina superior izquierda.
+    doc.rotate(-90, { origin: [0, 0] });
+    doc.translate(-doc.page.height, 0);
+
+    // Las dimensiones efectivas ahora están intercambiadas.
+    const newWidth = doc.page.height;
+    const newHeight = doc.page.width;
+
+    doc.fontSize(16).font('Helvetica-Bold').text('FERREMAYORISTAS DEL BAJIO', 0, 15, { width: newWidth, align: 'center' });
     doc.moveDown(0.5);
 
-    doc.fontSize(10).font('Helvetica').text(`Pedido: ${pedido.serie}-${pedido.folioExterno}`, { align: 'center' });
+    doc.fontSize(10).font('Helvetica').text(`Pedido: ${pedido.serie}-${pedido.folioExterno}`, { width: newWidth, align: 'center' });
     doc.moveDown(1.5);
 
-    doc.fontSize(12).font('Helvetica-Bold').text('CLIENTE:', { continued: true }).font('Helvetica').text(` ${pedido.clienteNombre}`);
+    doc.fontSize(12).font('Helvetica-Bold').text('CLIENTE:', { continued: true, indent: 15 }).font('Helvetica').text(` ${pedido.clienteNombre}`);
     doc.moveDown(1);
 
-    doc.fontSize(28).font('Helvetica-Bold').text(`${bultoActual}/${totalBultos}`, { align: 'center' });
+    doc.fontSize(28).font('Helvetica-Bold').text(`${bultoActual}/${totalBultos}`, { width: newWidth, align: 'center' });
+    doc.moveDown(0.5);
+
+    // --- Generación y adición del código de barras ---
+    const barcodeText = `${pedido.serie}-${pedido.folioExterno}`;
+    const pngBuffer = await bwipjs.toBuffer({
+      bcid: 'code128', // Tipo de código de barras
+      text: barcodeText, // Texto a codificar
+      scale: 2, // Escala
+      height: 15, // Altura en mm
+      includetext: true, // Incluir texto legible
+      textxalign: 'center', // Alineación del texto
+    });
+
+    // Centramos la imagen del código de barras
+    doc.image(pngBuffer, (newWidth - 180) / 2, doc.y, { width: 180, align: 'center' });
     doc.moveDown(1);
 
     const fecha = new Date().toLocaleString('es-MX');
-    doc.fontSize(8).font('Helvetica-Oblique').text(fecha, { align: 'center' });
+    doc.fontSize(8).font('Helvetica-Oblique').text(fecha, { width: newWidth, align: 'center' });
+
+    doc.restore(); // Restauramos el estado original
   }
 }
