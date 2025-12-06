@@ -256,10 +256,12 @@ export class PedidosService {
     doc.fontSize(12).font('Helvetica-Bold').text(`${bultoActual}/${totalBultos}`, 0, 22, { width: newWidth - 20, align: 'right' });
     doc.moveDown(1);
 
-    doc.fontSize(10).font('Helvetica').text(`Pedido: ${pedido.serie}-${pedido.folioExterno}`, { width: newWidth, align: 'center' });
+    doc.fontSize(10).font('Helvetica').text(`Pedido: ${pedido.serie}-${pedido.folioExterno}`, 0, 20, { width: newWidth, align: 'center' });
+    const fecha = new Date().toLocaleString('es-MX');
+    doc.fontSize(8).font('Helvetica-Oblique').text(fecha, 0, 22, { width: newWidth, align: 'right' });
     doc.moveDown(1);
 
-    doc.fontSize(12).font('Helvetica-Bold').text('CLIENTE:', 15, doc.y, { continued: true }).font('Helvetica').text(` ${pedido.clienteNombre}`, { width: newWidth - 85 });
+    doc.fontSize(12).font('Helvetica-Bold').text('CLIENTE:', 15, doc.y, { continued: true }).font('Helvetica').text(` ${pedido.clienteNombre}`, { width: newWidth, align: 'center' });
     doc.moveDown(2);
 
     // --- Generación y adición del código de barras ---
@@ -274,11 +276,10 @@ export class PedidosService {
     });
 
     // Posicionamos el código de barras a la izquierda
-    doc.image(pngBuffer, 15, doc.y, { width: 150 });
+    doc.image(pngBuffer, 15, doc.y, { width: 150, align: 'center' });
     doc.moveDown(1);
 
-    const fecha = new Date().toLocaleString('es-MX');
-    doc.fontSize(8).font('Helvetica-Oblique').text(fecha, { width: newWidth, align: 'center' });
+    
 
     doc.restore(); // Restauramos el estado original
   }
