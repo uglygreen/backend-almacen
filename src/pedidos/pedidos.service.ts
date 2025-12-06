@@ -251,31 +251,30 @@ export class PedidosService {
     const newWidth = doc.page.height;
     const newHeight = doc.page.width;
 
-    doc.fontSize(16).font('Helvetica-Bold').text('FERREMAYORISTAS DEL BAJIO', 0, 15, { width: newWidth, align: 'center' });
-    doc.moveDown(0.5);
-
-    doc.fontSize(10).font('Helvetica').text(`Pedido: ${pedido.serie}-${pedido.folioExterno}`, { width: newWidth, align: 'center' });
-    doc.moveDown(1.5);
-
-    doc.fontSize(12).font('Helvetica-Bold').text('CLIENTE:', { continued: true, indent: 15 }).font('Helvetica').text(` ${pedido.clienteNombre}`);
+    // Título y número de bulto en la misma "fila"
+    doc.fontSize(16).font('Helvetica-Bold').text('FERREMAYORISTAS DEL BAJIO', 0, 20, { width: newWidth, align: 'center' });
+    doc.fontSize(12).font('Helvetica-Bold').text(`${bultoActual}/${totalBultos}`, 0, 22, { width: newWidth - 20, align: 'right' });
     doc.moveDown(1);
 
-    doc.fontSize(28).font('Helvetica-Bold').text(`${bultoActual}/${totalBultos}`, { width: newWidth, align: 'center' });
-    doc.moveDown(0.5);
+    doc.fontSize(10).font('Helvetica').text(`Pedido: ${pedido.serie}-${pedido.folioExterno}`, { width: newWidth, align: 'center' });
+    doc.moveDown(1);
+
+    doc.fontSize(12).font('Helvetica-Bold').text('CLIENTE:', 15, doc.y, { continued: true }).font('Helvetica').text(` ${pedido.clienteNombre}`, { width: newWidth - 85 });
+    doc.moveDown(2);
 
     // --- Generación y adición del código de barras ---
     const barcodeText = `${pedido.serie}-${pedido.folioExterno}`;
     const pngBuffer = await bwipjs.toBuffer({
       bcid: 'code128', // Tipo de código de barras
       text: barcodeText, // Texto a codificar
-      scale: 2, // Escala
+      scale: 2, // Escala reducida
       height: 15, // Altura en mm
       includetext: true, // Incluir texto legible
       textxalign: 'center', // Alineación del texto
     });
 
-    // Centramos la imagen del código de barras
-    doc.image(pngBuffer, (newWidth - 180) / 2, doc.y, { width: 180, align: 'center' });
+    // Posicionamos el código de barras a la izquierda
+    doc.image(pngBuffer, 15, doc.y, { width: 150 });
     doc.moveDown(1);
 
     const fecha = new Date().toLocaleString('es-MX');
