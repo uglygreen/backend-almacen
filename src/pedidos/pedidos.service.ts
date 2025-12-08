@@ -93,7 +93,7 @@ export class PedidosService {
   // --- OPERACIONES ---
 
   async asignarUsuario(id: number, dto: AsignarPedidoDto) {
-    const pedido = await this.pedidoRepo.findOne({ where: { id } });
+    const pedido = await this.pedidoRepo.findOne({ where: { idExternoDoc: id } });
     if (!pedido) throw new NotFoundException('Pedido no encontrado');
 
     if (dto.zona === 'CC') {
@@ -276,7 +276,7 @@ export class PedidosService {
       bcid: 'code128', // Tipo de código de barras
       text: barcodeText, // Texto a codificar
       scale: 2, // Escala
-      height: 15, // Altura en mm
+      height: 10, // Altura en mm
       includetext: true, // Incluir texto legible
       textxalign: 'center', // Alineación del texto
     });
