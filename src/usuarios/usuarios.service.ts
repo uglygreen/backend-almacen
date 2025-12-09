@@ -16,7 +16,10 @@ export class UsuariosService {
     const { idAlmacenista } = loginUsuarioDto;
 
     const usuario = await this.almacenUserRepository.findOne({
-      where: { id: idAlmacenista },
+      where: { 
+        id: idAlmacenista,
+        area: 'almacen'
+      },
     });
 
     if (!usuario) {
