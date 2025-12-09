@@ -62,7 +62,7 @@ export class SincronizacionService {
         LEFT OUTER JOIN CLA ON CAR.CARACTERISTICA = CLA.CLAID
         WHERE D.TIPO IN ('C', 'W') AND D.ESTADO= 'A' AND D.FECHA = CURDATE() AND CLA.CLATEXTO IN ('01', '02') AND D.DOCID > ?
         ORDER BY D.DOCID ASC
-        LIMIT 100
+        LIMIT 150
         `, [ultimoId]);
 
         if (nuevosPedidosRaw.length > 0) {
