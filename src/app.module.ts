@@ -7,6 +7,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AlmacenUser, ControlSincronizacion, DetallePedido, Pedido, Producto, ProductoCodigo } from './entities';
 import { EventsGateway } from './events/events.gateway';
 import { MetricasModule } from './metricas/metricas.module';
+import { UsuariosModule } from './usuarios/usuarios.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { MetricasModule } from './metricas/metricas.module';
     PedidosModule,
     SincronizacionModule,
     MetricasModule,
+    UsuariosModule,
   ],
   controllers: [ ],
   providers: [ EventsGateway],
