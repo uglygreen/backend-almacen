@@ -8,6 +8,7 @@ import { AlmacenUser, ControlSincronizacion, DetallePedido, Pedido, Producto, Pr
 import { EventsGateway } from './events/events.gateway';
 import { MetricasModule } from './metricas/metricas.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
+import { InventarioModule } from './inventario/inventario.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { UsuariosModule } from './usuarios/usuarios.module';
     SincronizacionModule,
     MetricasModule,
     UsuariosModule,
+    InventarioModule,
   ],
   controllers: [ ],
   providers: [ EventsGateway],
