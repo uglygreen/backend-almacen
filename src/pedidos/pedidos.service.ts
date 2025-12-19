@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DetallePedido, Pedido, StatusGlobal, StatusLinea, Zona } from 'src/entities';
+import { DetallePedido, Pedido, StatusGlobal, StatusLinea, Surtido, Zona } from 'src/entities';
 import { In, IsNull, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { EventsGateway } from 'src/events/events.gateway';
 import { ActualizarLineaDto, AsignarPedidoDto, AsignarSiguienteDto, EmpaquetarPedidoDto, FinalizarEtapaDto } from './dto/pedidos.dto';
@@ -12,6 +12,7 @@ export class PedidosService {
   constructor(
     @InjectRepository(Pedido) private pedidoRepo: Repository<Pedido>,
     @InjectRepository(DetallePedido) private detalleRepo: Repository<DetallePedido>,
+    @InjectRepository(Surtido) private surtidoRepo: Repository<Surtido>,
     private eventsGateway: EventsGateway,
   ) {}
 
@@ -93,7 +94,10 @@ export class PedidosService {
   // --- OPERACIONES ---
 
   async asignarUsuario(id: number, dto: AsignarPedidoDto) {
-    const pedido = await this.pedidoRepo.findOne({ where: { idExternoDoc: id } });
+    const pedido = await this.pedidoRepo.findOne({
+      where: { idExternoDoc: id },
+      relations: ['detalles'],
+    });
     if (!pedido) throw new NotFoundException('Pedido no encontrado');
 
     if (dto.zona === 'CC') {
@@ -107,6 +111,30 @@ export class PedidosService {
     }
 
     const actualizado = await this.pedidoRepo.save(pedido);
+
+    try {
+      // Calculamos partidas (items únicos) que corresponden a la zona
+      // Nota: Si se requiere el total del pedido independientemente de la zona, quitar el filtro.
+      // Pero dado que 'lugar' es específico ('cc' o 'al'), filtramos por zona.
+      const zonaTarget = dto.zona === 'CC' ? Zona.CC : Zona.AG;
+      const partidasCount = pedido.detalles.filter((d) => d.zonaSurtido === zonaTarget).length;
+      // Si no hay partidas para esa zona (raro si se asigna), podría ser 0.
+      // Si el usuario quiere TODO el pedido: const partidasCount = pedido.detalles.length;
+
+      const surtido = this.surtidoRepo.create({
+        idAlmacenista: dto.userId,
+        fecha: new Date().toISOString().split('T')[0],
+        hora: new Date().toTimeString().split(' ')[0],
+        partidas: partidasCount,
+        pedido: parseInt(pedido.folioExterno),
+        lugar: dto.zona === 'CC' ? 'cc' : 'al',
+        serie: pedido.serie,
+      });
+
+      await this.surtidoRepo.save(surtido);
+    } catch (error) {
+      console.error('Error al registrar en tabla surtido:', error);
+    }
 
     this.eventsGateway.emitirCambioEstado({ idPedido: id, nuevoEstado: pedido.statusGlobal });
 

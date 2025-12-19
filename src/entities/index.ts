@@ -233,3 +233,33 @@ export class DetallePedido {
   @JoinColumn({ name: 'producto_id' })
   producto: Producto;
 }
+
+@Entity('surtido')
+export class Surtido {
+  @PrimaryGeneratedColumn({ name: 'id_surtido' })
+  idSurtido: number;
+
+  @Column({ name: 'id_almacenista' })
+  idAlmacenista: number;
+
+  @Column({ type: 'date', nullable: true })
+  fecha: string; // or Date, keeping as string for simplicity if driver handles it, but TypeORM usually prefers Date or string. string is safer for 'date' type sometimes. Let's use string.
+
+  @Column({ type: 'time', nullable: true })
+  hora: string;
+
+  @Column({ nullable: true })
+  partidas: number;
+
+  @Column({ nullable: true })
+  pedido: number;
+
+  @Column({ type: 'text', nullable: true })
+  lugar: string;
+
+  @Column({ name: 'fecha_aplicada', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
+  fechaAplicada: Date;
+
+  @Column({ length: 3, nullable: true })
+  serie: string;
+}

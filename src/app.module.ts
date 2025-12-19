@@ -4,7 +4,7 @@ import { PedidosModule } from './pedidos/pedidos.module';
 import { SincronizacionModule } from './sincronizacion/sincronizacion.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AlmacenUser, ControlSincronizacion, DetallePedido, Pedido, Producto, ProductoCodigo } from './entities';
+import { AlmacenUser, ControlSincronizacion, DetallePedido, Pedido, Producto, ProductoCodigo, Surtido } from './entities';
 import { EventsGateway } from './events/events.gateway';
 import { MetricasModule } from './metricas/metricas.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
@@ -24,7 +24,7 @@ import { InventarioModule } from './inventario/inventario.module';
       username: 'web',
       password: 'webfmolvera17',
       database: 'sistemas',
-      entities: [Pedido, DetallePedido, Producto, AlmacenUser, ControlSincronizacion, ProductoCodigo],
+      entities: [Pedido, DetallePedido, Producto, AlmacenUser, ControlSincronizacion, ProductoCodigo, Surtido],
       synchronize: false, // ¡Cuidado en producción!
     }),
 
