@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DetallePedido, Pedido, StatusGlobal, StatusLinea, Surtido, Zona } from 'src/entities';
+import { DetallePedido, Pedido, StatusGlobal, StatusLinea, Surtido, Zona, StatusEntrega } from 'src/entities';
 import { In, IsNull, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { EventsGateway } from 'src/events/events.gateway';
 import { ActualizarLineaDto, AsignarPedidoDto, AsignarSiguienteDto, EmpaquetarPedidoDto, FinalizarEtapaDto } from './dto/pedidos.dto';
@@ -88,6 +88,16 @@ export class PedidosService {
     return this.pedidoRepo.findOne({
       where: { id },
       relations: ['detalles', 'detalles.producto', 'detalles.producto.codigos'],
+    });
+  }
+
+  getPedidosRecogeEnOficina() {
+    return this.pedidoRepo.find({
+      where: {
+        esRecogeEnOficina: true,
+        statusGlobal: Not(StatusGlobal.CANCELADO),
+      },
+      order: { fechaCreacion: 'DESC' },
     });
   }
 
@@ -233,6 +243,12 @@ export class PedidosService {
     }
 
     pedido.statusGlobal = StatusGlobal.EMPAQUETADO;
+    
+    // Si el pedido es para recoger en oficina, se actualiza el estado de entrega
+    if (pedido.esRecogeEnOficina) {
+      pedido.statusEntrega = StatusEntrega.DISPONIBLE_OFICINA;
+    }
+
     await this.pedidoRepo.save(pedido);
 
     this.eventsGateway.emitirCambioEstado({ idPedido: id, nuevoEstado: StatusGlobal.EMPAQUETADO });
@@ -265,6 +281,18 @@ export class PedidosService {
       });
       doc.end();
     });
+  }
+
+  async actualizarStatusEntrega(id: number, nuevoStatus: StatusEntrega) {
+    const pedido = await this.pedidoRepo.findOne({ where: { id } });
+    if (!pedido) throw new NotFoundException('Pedido no encontrado');
+
+    if (!pedido.esRecogeEnOficina) {
+      throw new BadRequestException('Este pedido no está marcado como Recoge en Oficina');
+    }
+
+    pedido.statusEntrega = nuevoStatus;
+    return this.pedidoRepo.save(pedido);
   }
 
   private async crearTicket(doc: PDFKit.PDFDocument, pedido: Pedido, bultoActual: number, totalBultos: number) {

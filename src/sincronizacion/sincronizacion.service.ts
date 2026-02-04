@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { ControlSincronizacion, DetallePedido, Pedido, Producto, ProductoCodigo, StatusGlobal, Zona } from 'src/entities';
+import { ControlSincronizacion, DetallePedido, Pedido, Producto, ProductoCodigo, StatusEntrega, StatusGlobal, Zona } from 'src/entities';
 import { EventsGateway } from 'src/events/events.gateway';
 import { DataSource, In, Not, Repository } from 'typeorm';
 
@@ -154,7 +154,7 @@ export class SincronizacionService {
         // Obtenemos todos los detalles para ESTE pedido
         const items = await this.dataSourceLegacy.query(`
             SELECT 
-                D.DOCID, D.NUMERO, D.SERIE, D.FECHA, C.NOMBRE AS CLIENTE,
+                D.DOCID, D.NUMERO, D.SERIE, D.FECHA, C.NOMBRE AS CLIENTE, D.NOTA,
                 I.ARTICULOID,I.CLVPROV, I.CLAVE, I.DESCRIPCIO, I.CODBAR, I.XIMAGEN2, DS.DESCANTIDAD, A.UBICACION, CLA.CLATEXTO
             FROM DOC D
             JOIN DES DS ON D.DOCID = DS.DESDOCID
@@ -246,6 +246,8 @@ export class SincronizacionService {
         }
 
        
+        const nota = items[0].NOTA || '';
+        const esRecogeEnOficina = nota.includes('CLIENTE RECOGE EN OFICINA');
 
         const nuevoPedido = queryRunner.manager.create(Pedido, {
           idExternoDoc: docId,
@@ -255,7 +257,8 @@ export class SincronizacionService {
           fechaCreacion: items[0].FECHA || new Date(),
           requiereCuartoChico: requiereCuartoChico,
           clatexto: items[0].CLATEXTO == '01' ? 'TX' : 'QRO',
-          statusGlobal: requiereCuartoChico ? StatusGlobal.ESPERA_CC : StatusGlobal.PENDIENTE_AG
+          statusGlobal: requiereCuartoChico ? StatusGlobal.ESPERA_CC : StatusGlobal.PENDIENTE_AG,
+          esRecogeEnOficina: esRecogeEnOficina,
         });
 
         const pedidoGuardado = await queryRunner.manager.save(nuevoPedido);
@@ -307,7 +310,7 @@ export class SincronizacionService {
       where: {
         statusGlobal: Not(In([StatusGlobal.COMPLETADO, StatusGlobal.EMPAQUETADO, StatusGlobal.CANCELADO]))
       },
-      select: ['id', 'idExternoDoc'] // Solo necesitamos los IDs
+      select: ['id', 'idExternoDoc', 'esRecogeEnOficina'] // Solo necesitamos los IDs y la bandera de oficina
     });
 
     if (pedidosActivos.length === 0) return;
@@ -346,6 +349,19 @@ export class SincronizacionService {
             fechaFinAg: new Date() 
           }
         );
+
+        // --- Actualización específica para pedidos de Oficina ---
+        const idsOficinaFacturados = pedidosActivos
+          .filter(p => idsFacturados.includes(p.idExternoDoc) && p.esRecogeEnOficina)
+          .map(p => p.idExternoDoc);
+
+        if (idsOficinaFacturados.length > 0) {
+          await pedidoRepo.update(
+            { idExternoDoc: In(idsOficinaFacturados) },
+            { statusEntrega: StatusEntrega.DISPONIBLE_OFICINA }
+          );
+          this.logger.log(`Se marcaron como disponibles en oficina ${idsOficinaFacturados.length} pedidos facturados.`);
+        }
         
         this.logger.log(`Se cerraron ${idsFacturados.length} pedidos remotamente (Facturados en Legacy).`);
 

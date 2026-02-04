@@ -27,6 +27,12 @@ export enum StatusLinea {
   NO_ENCONTRADO = 'NO_ENCONTRADO',
 }
 
+export enum StatusEntrega {
+  PENDIENTE = 'PENDIENTE',
+  DISPONIBLE_OFICINA = 'DISPONIBLE_EN_OFICINA',
+  ENTREGADO = 'ENTREGADO_CLIENTE',
+}
+
 // --------------------------------------------------------
 // ENTIDADES
 // --------------------------------------------------------
@@ -175,6 +181,12 @@ export class Pedido {
 
   @Column()
   clatexto: string;
+
+  @Column({ name: 'es_recoge_en_oficina', default: false })
+  esRecogeEnOficina: boolean;
+
+  @Column({ name: 'status_entrega', type: 'enum', enum: StatusEntrega, default: StatusEntrega.PENDIENTE })
+  statusEntrega: StatusEntrega;
 
   // Relaciones con usuarios (Surtidores)
   @Column({ name: 'surtidor_cc_id', nullable: true })

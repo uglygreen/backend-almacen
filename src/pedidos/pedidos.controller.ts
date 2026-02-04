@@ -3,6 +3,7 @@ import { PedidosService } from './pedidos.service';
 import { ActualizarLineaDto, AsignarPedidoDto, AsignarSiguienteDto, EmpaquetarPedidoDto, FinalizarEtapaDto } from './dto/pedidos.dto';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { StatusEntrega } from 'src/entities';
 
 @ApiTags('Pedidos') // Etiqueta para Swagger
 @Controller('pedidos')
@@ -44,6 +45,12 @@ export class PedidosController {
   @ApiOperation({ summary: 'Obtener pedidos completados en el día actual' })
   async getPedidosCompletadosHoy() {
     return this.pedidosService.getPedidosCompletadosHoy();
+  }
+
+  @Get('oficina')
+  @ApiOperation({ summary: 'Obtener pedidos para recoger en oficina' })
+  async getPedidosRecogeEnOficina() {
+    return this.pedidosService.getPedidosRecogeEnOficina();
   }
 
   @Get(':id/detalle')
@@ -107,5 +114,14 @@ export class PedidosController {
     });
 
     res.end(pdfBuffer);
+  }
+
+  @Patch(':id/status-entrega')
+  @ApiOperation({ summary: 'Actualizar status de entrega (para pedidos de oficina)' })
+  async actualizarStatusEntrega(
+    @Param('id') id: number,
+    @Body('status') status: StatusEntrega
+  ) {
+    return this.pedidosService.actualizarStatusEntrega(id, status);
   }
 }
