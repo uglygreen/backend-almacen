@@ -92,10 +92,14 @@ export class PedidosService {
   }
 
   getPedidosRecogeEnOficina() {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
     return this.pedidoRepo.find({
       where: {
         esRecogeEnOficina: true,
         statusGlobal: Not(StatusGlobal.CANCELADO),
+        fechaCreacion: MoreThanOrEqual(hoy),
       },
       order: { fechaCreacion: 'DESC' },
     });
