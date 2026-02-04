@@ -351,9 +351,10 @@ export class SincronizacionService {
         );
 
         // --- Actualización específica para pedidos de Oficina ---
-        const idsOficinaFacturados = pedidosActivos
-          .filter(p => idsFacturados.includes(p.idExternoDoc) && p.esRecogeEnOficina)
-          .map(p => p.idExternoDoc);
+        const pedidosOficinaFacturados = pedidosActivos
+          .filter(p => idsFacturados.includes(p.idExternoDoc) && p.esRecogeEnOficina);
+
+        const idsOficinaFacturados = pedidosOficinaFacturados.map(p => p.idExternoDoc);
 
         if (idsOficinaFacturados.length > 0) {
           await pedidoRepo.update(
@@ -361,6 +362,14 @@ export class SincronizacionService {
             { statusEntrega: StatusEntrega.DISPONIBLE_OFICINA }
           );
           this.logger.log(`Se marcaron como disponibles en oficina ${idsOficinaFacturados.length} pedidos facturados.`);
+          
+          // Emitir evento para cada pedido actualizado
+          for (const pedido of pedidosOficinaFacturados) {
+            this.eventsGateway.emitirCambioStatusEntrega({ 
+              idPedido: pedido.id, 
+              nuevoStatusEntrega: StatusEntrega.DISPONIBLE_OFICINA 
+            });
+          }
         }
         
         this.logger.log(`Se cerraron ${idsFacturados.length} pedidos remotamente (Facturados en Legacy).`);

@@ -247,6 +247,7 @@ export class PedidosService {
     // Si el pedido es para recoger en oficina, se actualiza el estado de entrega
     if (pedido.esRecogeEnOficina) {
       pedido.statusEntrega = StatusEntrega.DISPONIBLE_OFICINA;
+      this.eventsGateway.emitirCambioStatusEntrega({ idPedido: id, nuevoStatusEntrega: StatusEntrega.DISPONIBLE_OFICINA });
     }
 
     await this.pedidoRepo.save(pedido);
@@ -292,7 +293,11 @@ export class PedidosService {
     }
 
     pedido.statusEntrega = nuevoStatus;
-    return this.pedidoRepo.save(pedido);
+    const actualizado = await this.pedidoRepo.save(pedido);
+
+    this.eventsGateway.emitirCambioStatusEntrega({ idPedido: id, nuevoStatusEntrega: nuevoStatus });
+
+    return actualizado;
   }
 
   private async crearTicket(doc: PDFKit.PDFDocument, pedido: Pedido, bultoActual: number, totalBultos: number) {

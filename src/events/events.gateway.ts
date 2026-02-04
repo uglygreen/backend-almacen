@@ -25,6 +25,10 @@ export class EventsGateway implements OnModuleInit {
     this.server.emit('pedido_actualizado', data);
   }
 
+  emitirCambioStatusEntrega(data: { idPedido: number, nuevoStatusEntrega: string }) {
+    this.server.emit('pedido_entrega_actualizado', data);
+  }
+
   emitirAlertaSurtido(mensaje: string) {
     this.server.emit('alerta_almacen', { mensaje });
   }
