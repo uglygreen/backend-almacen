@@ -275,3 +275,5 @@ export class Surtido {
   @Column({ length: 3, nullable: true })
   serie: string;
 }
+
+export * from './cliente.entity';

@@ -9,6 +9,8 @@ import { EventsGateway } from './events/events.gateway';
 import { MetricasModule } from './metricas/metricas.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { InventarioModule } from './inventario/inventario.module';
+import { ClientesModule } from './clientes/clientes.module';
+import { Cliente } from './entities/cliente.entity';
 
 @Module({
   imports: [
@@ -37,7 +39,7 @@ import { InventarioModule } from './inventario/inventario.module';
       username: 'web',
       password: 'webfmolvera17',
       database: 'datosb',
-      entities: [], // No necesitamos entidades aquí, usaremos Raw Queries
+      entities: [Cliente], // Registramos la entidad Cliente
       synchronize: false,
     }),
 
@@ -47,6 +49,7 @@ import { InventarioModule } from './inventario/inventario.module';
     MetricasModule,
     UsuariosModule,
     InventarioModule,
+    ClientesModule,
   ],
   controllers: [ ],
   providers: [ EventsGateway],
