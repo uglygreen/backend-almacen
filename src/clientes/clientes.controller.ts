@@ -35,4 +35,10 @@ export class ClientesController {
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.clientesService.findOne(id);
   }
+
+  @Get(':numero')
+  @ApiOperation({ summary: 'Obtener cliente por numero de cliente' })
+  findOneByNumber(@Param('numero') numero: string) {
+    return this.clientesService.findOneByNumber(numero);
+  }
 }

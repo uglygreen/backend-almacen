@@ -23,6 +23,11 @@ export class ClientesService {
     return this.clienteRepo.findOne({ where: { clienteId: id } });
   }
 
+   // Obtener cliente por numero
+  async findOneByNumber(numero: string) {
+    return this.clienteRepo.findOne({ where: { numero: numero } });
+  }
+
   // Clientes Activos
   async findActivos() {
     return this.clienteRepo.find({
