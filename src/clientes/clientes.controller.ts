@@ -30,15 +30,15 @@ export class ClientesController {
     return this.clientesService.findDeudores();
   }
 
+  @Get('buscar-por-numero/:numero')
+  @ApiOperation({ summary: 'Obtener cliente por numero de cliente' })
+  findOneByNumber(@Param('numero') numero: string) {
+    return this.clientesService.findOneByNumber(numero);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Obtener cliente por ID' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.clientesService.findOne(id);
-  }
-
-  @Get(':numero')
-  @ApiOperation({ summary: 'Obtener cliente por numero de cliente' })
-  findOneByNumber(@Param('numero') numero: string) {
-    return this.clientesService.findOneByNumber(numero);
   }
 }
