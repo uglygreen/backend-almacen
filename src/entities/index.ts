@@ -277,3 +277,4 @@ export class Surtido {
 }
 
 export * from './cliente.entity';
+export * from './config-almacen.entity';

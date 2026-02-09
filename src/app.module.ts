@@ -11,6 +11,8 @@ import { UsuariosModule } from './usuarios/usuarios.module';
 import { InventarioModule } from './inventario/inventario.module';
 import { ClientesModule } from './clientes/clientes.module';
 import { Cliente } from './entities/cliente.entity';
+import { ConfigAlmacenModule } from './config-almacen/config-almacen.module';
+import { ConfigAlmacen } from './entities/config-almacen.entity';
 
 @Module({
   imports: [
@@ -26,7 +28,7 @@ import { Cliente } from './entities/cliente.entity';
       username: 'web',
       password: 'webfmolvera17',
       database: 'sistemas',
-      entities: [Pedido, DetallePedido, Producto, AlmacenUser, ControlSincronizacion, ProductoCodigo, Surtido],
+      entities: [Pedido, DetallePedido, Producto, AlmacenUser, ControlSincronizacion, ProductoCodigo, Surtido, ConfigAlmacen],
       synchronize: false, // ¡Cuidado en producción!
     }),
 
@@ -50,6 +52,7 @@ import { Cliente } from './entities/cliente.entity';
     UsuariosModule,
     InventarioModule,
     ClientesModule,
+    ConfigAlmacenModule,
   ],
   controllers: [ ],
   providers: [ EventsGateway],
