@@ -16,7 +16,7 @@ export class ConfigAlmacenController {
   @Post('rango')
   @ApiOperation({ summary: 'Establecer un rango de fechas personalizado' })
   actualizarRango(@Body() body: { fechaMin: string; fechaMax: string }) {
-    return this.configService.actualizarConfiguracion(body.fechaMin, body.fechaMax);
+    return this.configService.setRango(body.fechaMin, body.fechaMax);
   }
 
   @Post('hoy')

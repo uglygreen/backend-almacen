@@ -10,4 +10,7 @@ export class ConfigAlmacen {
 
   @Column({ name: 'fecha_max', type: 'date' })
   fechaMax: string;
+
+  @Column({ name: 'modo_actualizacion', type: 'varchar', length: 20, default: 'manual' })
+  modoActualizacion: string; // 'hoy', 'dos_dias', 'rango', 'manual'
 }
