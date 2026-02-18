@@ -8,6 +8,11 @@ export class CreateGarantiaDto {
   @IsString()
   numCli?: string;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  folio?: string;
+
   @ApiProperty()
   @IsNotEmpty()
   @IsInt()
