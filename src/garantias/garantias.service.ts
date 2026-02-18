@@ -77,7 +77,7 @@ export class GarantiasService {
       take: limit,
       skip: (page - 1) * limit,
       order: { fechaCreacion: 'DESC' },
-      relations: ['cliente', 'producto', 'media'],
+      relations: ['producto', 'media'],
     });
   }
 
@@ -92,14 +92,14 @@ export class GarantiasService {
         fechaCreacion: Between(thirtyDaysAgo, today),
       },
       order: { fechaCreacion: 'DESC' },
-      relations: ['cliente', 'producto'],
+      relations: ['producto'],
     });
   }
 
   async findOne(id: number) {
     const garantia = await this.garantiaRepo.findOne({
       where: { id },
-      relations: ['cliente', 'producto', 'historial', 'media'],
+      relations: ['producto', 'historial', 'media'],
     });
     if (!garantia) throw new NotFoundException(`Garantía con ID ${id} no encontrada`);
     return garantia;

@@ -14,7 +14,7 @@ export enum EstatusGarantia {
   CONCLUIDO = 'CONCLUIDO'
 }
 
-@Entity('garantias')
+@Entity('garantias_fmo')
 export class Garantia {
   @PrimaryGeneratedColumn()
   id: number;
@@ -52,11 +52,6 @@ export class Garantia {
 
   @UpdateDateColumn({ name: 'fecha_actualizacion' })
   fechaActualizacion: Date;
-
-  // Relaciones
-  @ManyToOne(() => Cliente, { nullable: true })
-  @JoinColumn({ name: 'cliente_id' })
-  cliente: Cliente;
 
   @ManyToOne(() => Producto)
   @JoinColumn({ name: 'producto_id' })
