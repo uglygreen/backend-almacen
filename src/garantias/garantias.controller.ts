@@ -35,6 +35,16 @@ export class GarantiasController {
         return cb(null, `${randomName}${extname(file.originalname)}`);
       },
     }),
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10 MB por archivo
+    },
+    fileFilter: (req, file, cb) => {
+      // Validar que sea imagen o video
+      if (!file.mimetype.match(/\/(jpg|jpeg|png|gif|mp4|mov|avi|quicktime)$/)) {
+        return cb(new BadRequestException('Solo se permiten imágenes y videos (jpg, png, mp4, mov)'), false);
+      }
+      cb(null, true);
+    },
   }))
   async create(
     @Body() createGarantiaDto: CreateGarantiaDto,

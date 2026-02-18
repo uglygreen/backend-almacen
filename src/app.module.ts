@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 
 import { PedidosModule } from './pedidos/pedidos.module';
 import { SincronizacionModule } from './sincronizacion/sincronizacion.module';
@@ -21,6 +23,12 @@ import { EventsModule } from './events/events.module';
   imports: [
     // 1. Activar Cron Jobs
     ScheduleModule.forRoot(),
+    
+    // 1.5 Servir archivos estáticos
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'uploads'),
+      serveRoot: '/uploads', 
+    }),
 
     // 2. Conexión Principal (Escritura - Sistemas)
     TypeOrmModule.forRoot({

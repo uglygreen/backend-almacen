@@ -2,8 +2,15 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as fs from 'fs';
 
 async function bootstrap() {
+  // Asegurar que existe el directorio de uploads
+  const uploadDir = './uploads/garantias';
+  if (!fs.existsSync(uploadDir)){
+      fs.mkdirSync(uploadDir, { recursive: true });
+  }
+
   const app = await NestFactory.create(AppModule);
 
   // 1. Activar CORS (Para que Angular y la App Móvil se puedan conectar)
