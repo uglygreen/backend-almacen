@@ -5,8 +5,8 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export class CreateGarantiaDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @IsInt()
-  clienteId?: number;
+  @IsString()
+  numCli?: string;
 
   @ApiProperty()
   @IsNotEmpty()

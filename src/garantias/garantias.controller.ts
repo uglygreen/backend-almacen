@@ -82,6 +82,13 @@ export class GarantiasController {
     return this.garantiasService.findLast30Days();
   }
 
+  @Get('activas')
+  @ApiOperation({ summary: 'Obtener garantías activas por cliente' })
+  findActivas(@Query('numCli') numCli: string) {
+    if (!numCli) throw new BadRequestException('numCli es requerido');
+    return this.garantiasService.findActivasPorCliente(numCli);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Obtener detalle de garantía' })
   findOne(@Param('id', ParseIntPipe) id: number) {
@@ -101,9 +108,9 @@ export class GarantiasController {
   @ApiOperation({ summary: 'Buscar facturas por SKU y Cliente' })
   findFacturas(
     @Param('codigo') codigo: string,
-    @Query('clienteId', ParseIntPipe) clienteId: number
+    @Query('numCli') numCli: string
   ) {
-    if (!clienteId) throw new BadRequestException('clienteId es requerido');
-    return this.garantiasService.findFacturasPorProducto(codigo, clienteId);
+    if (!numCli) throw new BadRequestException('numCli es requerido');
+    return this.garantiasService.findFacturasPorProducto(codigo, numCli);
   }
 }

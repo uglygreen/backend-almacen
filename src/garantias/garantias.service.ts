@@ -32,14 +32,14 @@ export class GarantiasService {
 
   // Crear nueva garantía
   async create(createDto: CreateGarantiaDto) {
-    const { clienteId, productoId, facturaId, descripcionFalla, telefonoContacto, nombreContacto } = createDto;
+    const { numCli, productoId, facturaId, descripcionFalla, telefonoContacto, nombreContacto } = createDto;
 
     // Generar Folio Único (ej. GAR-TIMESTAMP-RANDOM)
     const folio = `GAR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     const nuevaGarantia = this.garantiaRepo.create({
       folio,
-      clienteId,
+      numCli,
       productoId,
       facturaId,
       descripcionFalla,
@@ -105,6 +105,28 @@ export class GarantiasService {
     return garantia;
   }
 
+  // Obtener garantías activas por cliente
+  async findActivasPorCliente(numCli: string) {
+    const estatusActivos = [
+      EstatusGarantia.PENDIENTE_REVISION,
+      EstatusGarantia.RECIBIDO_ALMACEN,
+      EstatusGarantia.EN_DIAGNOSTICO,
+      EstatusGarantia.PROCEDE_CAMBIO,
+      EstatusGarantia.PROCEDE_NOTA_CREDITO,
+      EstatusGarantia.NO_PROCEDE,     // Se considera activa hasta que se notifica/devuelve
+      EstatusGarantia.ENVIADO_CLIENTE // En tránsito
+    ];
+
+    return this.garantiaRepo.find({
+      where: {
+        numCli,
+        estatusActual: In(estatusActivos),
+      },
+      order: { fechaCreacion: 'DESC' },
+      relations: ['producto', 'media'],
+    });
+  }
+
   // Cambio de estatus
   async updateStatus(id: number, updateDto: UpdateStatusDto) {
     const { nuevoEstatus, comentario, usuarioResponsable } = updateDto;
@@ -151,14 +173,14 @@ export class GarantiasService {
       let nombre = garantia.nombreContacto;
 
       // Si es cliente registrado y no tenemos contacto directo, buscamos en DB Cliente
-      if (garantia.clienteId && (!telefono || !nombre)) {
+      if (garantia.numCli && (!telefono || !nombre)) {
          // NOTA: Como la entidad Cliente no tiene campo explícito de teléfono,
          // aquí usaríamos un campo si existiera. Por ahora usamos el del registro de garantía.
          // Si quisiéramos buscar en otra tabla (ej. ContactosCliente), lo haríamos aquí.
          
          // Intentar obtener nombre del cliente si no está definido
          if (!nombre) {
-             const cliente = await this.clienteRepo.findOne({ where: { clienteId: garantia.clienteId } });
+             const cliente = await this.clienteRepo.findOne({ where: { numero: garantia.numCli } });
              if (cliente) nombre = cliente.nombre;
          }
       }
@@ -174,7 +196,15 @@ export class GarantiasService {
   }
 
   // Buscar facturas en Legacy DB por SKU y Cliente
-  async findFacturasPorProducto(codigo: string, clienteId: number) {
+  async findFacturasPorProducto(codigo: string, numCli: string) {
+    // 1. Obtener el ID interno del cliente basado en su número
+    const cliente = await this.clienteRepo.findOne({ where: { numero: numCli } });
+    
+    if (!cliente) {
+        this.logger.warn(`Cliente ${numCli} no encontrado al buscar facturas.`);
+        return [];
+    }
+    
     // Consulta a tablas DOC (Facturas), DES (Detalles), INV (Inventario)
     // Asumimos que codigo = CLVPROV
     const query = `
@@ -197,7 +227,7 @@ export class GarantiasService {
       LIMIT 20
     `;
 
-    const resultados = await this.legacyDataSource.query(query, [clienteId, codigo]);
+    const resultados = await this.legacyDataSource.query(query, [cliente.clienteId, codigo]);
     return resultados;
   }
 

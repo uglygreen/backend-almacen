@@ -22,8 +22,8 @@ export class Garantia {
   @Column({ unique: true })
   folio: string;
 
-  @Column({ name: 'cliente_id', nullable: true })
-  clienteId: number;
+  @Column({ name: 'num_cli', nullable: true })
+  numCli: string;
 
   @Column({ name: 'producto_id' })
   productoId: number;
