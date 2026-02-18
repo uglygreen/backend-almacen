@@ -278,3 +278,4 @@ export class Surtido {
 
 export * from './cliente.entity';
 export * from './config-almacen.entity';
+export * from './garantia.entity';

@@ -5,7 +5,6 @@ import { SincronizacionModule } from './sincronizacion/sincronizacion.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AlmacenUser, ControlSincronizacion, DetallePedido, Pedido, Producto, ProductoCodigo, Surtido } from './entities';
-import { EventsGateway } from './events/events.gateway';
 import { MetricasModule } from './metricas/metricas.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { InventarioModule } from './inventario/inventario.module';
@@ -13,6 +12,10 @@ import { ClientesModule } from './clientes/clientes.module';
 import { Cliente } from './entities/cliente.entity';
 import { ConfigAlmacenModule } from './config-almacen/config-almacen.module';
 import { ConfigAlmacen } from './entities/config-almacen.entity';
+
+import { GarantiasModule } from './garantias/garantias.module';
+import { Garantia, HistorialEstatusGarantia, MediaGarantia } from './entities/garantia.entity';
+import { EventsModule } from './events/events.module';
 
 @Module({
   imports: [
@@ -28,7 +31,7 @@ import { ConfigAlmacen } from './entities/config-almacen.entity';
       username: 'web',
       password: 'webfmolvera17',
       database: 'sistemas',
-      entities: [Pedido, DetallePedido, Producto, AlmacenUser, ControlSincronizacion, ProductoCodigo, Surtido, ConfigAlmacen],
+      entities: [Pedido, DetallePedido, Producto, AlmacenUser, ControlSincronizacion, ProductoCodigo, Surtido, ConfigAlmacen, Garantia, HistorialEstatusGarantia, MediaGarantia],
       synchronize: false, // ¡Cuidado en producción!
     }),
 
@@ -53,8 +56,10 @@ import { ConfigAlmacen } from './entities/config-almacen.entity';
     InventarioModule,
     ClientesModule,
     ConfigAlmacenModule,
+    GarantiasModule,
+    EventsModule,
   ],
   controllers: [ ],
-  providers: [ EventsGateway],
+  providers: [],
 })
 export class AppModule {}

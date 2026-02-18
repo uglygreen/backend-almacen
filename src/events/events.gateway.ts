@@ -32,4 +32,8 @@ export class EventsGateway implements OnModuleInit {
   emitirAlertaSurtido(mensaje: string) {
     this.server.emit('alerta_almacen', { mensaje });
   }
+
+  emitirCambioGarantia(data: any) {
+    this.server.emit('garantia_actualizada', data);
+  }
 }

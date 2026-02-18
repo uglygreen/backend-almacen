@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { SincronizacionService } from './sincronizacion.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ControlSincronizacion, DetallePedido, Pedido, Producto, ProductoCodigo } from 'src/entities';
-import { EventsGateway } from 'src/events/events.gateway';
+import { EventsModule } from '../events/events.module';
 
 @Module({
   imports: [
@@ -13,8 +13,9 @@ import { EventsGateway } from 'src/events/events.gateway';
       Pedido, 
       DetallePedido,
       ProductoCodigo 
-    ])
+    ]),
+    EventsModule
   ],
-  providers: [SincronizacionService, EventsGateway],
+  providers: [SincronizacionService],
 })
 export class SincronizacionModule {}

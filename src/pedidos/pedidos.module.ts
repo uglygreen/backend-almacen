@@ -3,11 +3,11 @@ import { PedidosService } from './pedidos.service';
 import { PedidosController } from './pedidos.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DetallePedido, Pedido, Surtido } from 'src/entities';
-import { EventsGateway } from 'src/events/events.gateway';
+import { EventsModule } from '../events/events.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Pedido, DetallePedido, Surtido])],
+  imports: [TypeOrmModule.forFeature([Pedido, DetallePedido, Surtido]), EventsModule],
   controllers: [PedidosController],
-  providers: [PedidosService, EventsGateway ],
+  providers: [PedidosService],
 })
 export class PedidosModule {}
