@@ -41,6 +41,7 @@ export class Garantia {
   descripcionFalla: string;
 
   @Column({
+    name: 'estatus_actual',
     type: 'enum',
     enum: EstatusGarantia,
     default: EstatusGarantia.PENDIENTE_REVISION
