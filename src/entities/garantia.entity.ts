@@ -74,6 +74,7 @@ export class HistorialEstatusGarantia {
   garantiaId: number;
 
   @Column({
+    name: 'estatus_anterior',
     type: 'enum',
     enum: EstatusGarantia,
     nullable: true
@@ -81,6 +82,7 @@ export class HistorialEstatusGarantia {
   estatusAnterior: EstatusGarantia | null;
 
   @Column({
+    name: 'estatus_nuevo',
     type: 'enum',
     enum: EstatusGarantia
   })
