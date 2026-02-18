@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as fs from 'fs';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   // Asegurar que existe el directorio de uploads
@@ -13,9 +14,12 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
 
+  // Aumentar el límite de tamaño del cuerpo de la solicitud
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ extended: true, limit: '50mb' }));
+
   // 1. Activar CORS (Para que Angular y la App Móvil se puedan conectar)
   app.enableCors();
-
   
   app.setGlobalPrefix('api');
   
@@ -36,6 +40,7 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  await app.listen(process.env.PORT || 3000, '0.0.0.0');
+  const server = await app.listen(process.env.PORT || 3000, '0.0.0.0');
+  server.setTimeout(600000); // 10 minutos
 }
 bootstrap();
