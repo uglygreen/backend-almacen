@@ -19,6 +19,8 @@ export class GarantiasService {
     private readonly historialRepo: Repository<HistorialEstatusGarantia>,
     @InjectRepository(MediaGarantia)
     private readonly mediaRepo: Repository<MediaGarantia>,
+    @InjectRepository(Producto)
+    private readonly productoRepo: Repository<Producto>,
     
     @InjectRepository(Cliente, 'legacy_db')
     private readonly clienteRepo: Repository<Cliente>,
@@ -204,6 +206,10 @@ export class GarantiasService {
         this.logger.warn(`Cliente ${numCli} no encontrado al buscar facturas.`);
         return [];
     }
+
+    // 2. Buscar producto local para obtener su ID
+    const productoLocal = await this.productoRepo.findOne({ where: { codigo } });
+    const productoId = productoLocal ? productoLocal.id : null;
     
     // Consulta a tablas DOC (Facturas), DES (Detalles), INV (Inventario)
     // Asumimos que codigo = CLVPROV
@@ -228,7 +234,12 @@ export class GarantiasService {
     `;
 
     const resultados = await this.legacyDataSource.query(query, [cliente.clienteId, codigo]);
-    return resultados;
+    
+    // Añadir productoId a cada resultado
+    return resultados.map(factura => ({
+      ...factura,
+      productoId
+    }));
   }
 
   // Agregar Media (Fotos/Videos)
