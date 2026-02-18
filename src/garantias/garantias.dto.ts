@@ -39,6 +39,12 @@ export class CreateGarantiaDto {
   @IsOptional()
   @IsString()
   nombreContacto?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  perId?: number;
 }
 
 export class UpdateStatusDto {

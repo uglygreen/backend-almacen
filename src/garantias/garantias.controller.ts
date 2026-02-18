@@ -89,6 +89,12 @@ export class GarantiasController {
     return this.garantiasService.findActivasPorCliente(numCli);
   }
 
+  @Get('personal/:perId')
+  @ApiOperation({ summary: 'Obtener garantías por personal (perId)' })
+  findByPersonal(@Param('perId', ParseIntPipe) perId: number) {
+    return this.garantiasService.findByPersonal(perId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Obtener detalle de garantía' })
   findOne(@Param('id', ParseIntPipe) id: number) {

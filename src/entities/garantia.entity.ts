@@ -37,6 +37,9 @@ export class Garantia {
   @Column({ name: 'nombre_contacto', nullable: true })
   nombreContacto: string; // Para público general o contacto alternativo
 
+  @Column({ name: 'per_id', type: 'int', nullable: true })
+  perId: number;
+
   @Column({ name: 'descripcion_falla', type: 'text' })
   descripcionFalla: string;
 

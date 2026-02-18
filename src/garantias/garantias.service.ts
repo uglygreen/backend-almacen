@@ -34,7 +34,7 @@ export class GarantiasService {
 
   // Crear nueva garantía
   async create(createDto: CreateGarantiaDto) {
-    const { numCli, productoId, facturaId, descripcionFalla, telefonoContacto, nombreContacto } = createDto;
+    const { numCli, productoId, facturaId, descripcionFalla, telefonoContacto, nombreContacto, perId } = createDto;
 
     // Generar Folio Único (ej. GAR-TIMESTAMP-RANDOM)
     const folio = `GAR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -47,6 +47,7 @@ export class GarantiasService {
       descripcionFalla,
       telefonoContacto,
       nombreContacto,
+      perId,
       estatusActual: EstatusGarantia.PENDIENTE_REVISION,
     });
 
@@ -105,6 +106,15 @@ export class GarantiasService {
     });
     if (!garantia) throw new NotFoundException(`Garantía con ID ${id} no encontrada`);
     return garantia;
+  }
+
+  // Obtener garantías por personal
+  async findByPersonal(perId: number) {
+    return this.garantiaRepo.find({
+      where: { perId },
+      order: { fechaCreacion: 'DESC' },
+      relations: ['producto', 'media'],
+    });
   }
 
   // Obtener garantías activas por cliente
