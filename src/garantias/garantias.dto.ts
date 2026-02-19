@@ -22,8 +22,14 @@ export class CreateGarantiaDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  facturaId?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  facturaId?: string;
+  numFactura?: string;
 
   @ApiProperty()
   @IsNotEmpty()

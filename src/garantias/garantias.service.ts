@@ -34,7 +34,7 @@ export class GarantiasService {
 
   // Crear nueva garantía
   async create(createDto: CreateGarantiaDto) {
-    const { numCli, productoId, facturaId, descripcionFalla, telefonoContacto, nombreContacto, perId } = createDto;
+    const { numCli, productoId, facturaId, numFactura, descripcionFalla, telefonoContacto, nombreContacto, perId } = createDto;
 
     // Generar Folio Único (ej. GAR-TIMESTAMP-RANDOM)
     const folio = `GAR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -44,6 +44,7 @@ export class GarantiasService {
       numCli,
       productoId,
       facturaId,
+      numFactura,
       descripcionFalla,
       telefonoContacto,
       nombreContacto,
@@ -245,10 +246,29 @@ export class GarantiasService {
 
     const resultados = await this.legacyDataSource.query(query, [cliente.clienteId, codigo]);
     
-    // Añadir productoId a cada resultado
+    // Verificar si ya existen garantías para estas facturas y este producto
+    let facturasConGarantia = new Set<number>();
+
+    if (productoId && resultados.length > 0) {
+      const docIds = resultados.map(r => r.DOCID);
+      // Validar que haya IDs para evitar error en In([])
+      if (docIds.length > 0) {
+        const garantiasExistentes = await this.garantiaRepo.find({
+            where: {
+                productoId: productoId,
+                facturaId: In(docIds),
+            },
+            select: ['facturaId'],
+        });
+        facturasConGarantia = new Set(garantiasExistentes.map(g => g.facturaId));
+      }
+    }
+
+    // Añadir productoId y flag tieneGarantia a cada resultado
     return resultados.map(factura => ({
       ...factura,
-      productoId
+      productoId,
+      tieneGarantia: facturasConGarantia.has(factura.DOCID)
     }));
   }
 

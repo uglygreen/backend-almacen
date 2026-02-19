@@ -28,8 +28,11 @@ export class Garantia {
   @Column({ name: 'producto_id' })
   productoId: number;
 
-  @Column({ name: 'factura_id', nullable: true })
-  facturaId: string; // Puede ser string si es folio fiscal o ID externo
+  @Column({ name: 'factura_id', type: 'int', nullable: true })
+  facturaId: number;
+
+  @Column({ name: 'num_factura', nullable: true })
+  numFactura: string;
 
   @Column({ name: 'telefono_contacto', nullable: true })
   telefonoContacto: string;
