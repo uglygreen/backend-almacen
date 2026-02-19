@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource, In, Between } from 'typeorm';
+import { Repository, DataSource, In, Between, Not } from 'typeorm';
 import { Garantia, HistorialEstatusGarantia, MediaGarantia, EstatusGarantia } from '../entities/garantia.entity';
 import { CreateGarantiaDto, UpdateStatusDto } from './garantias.dto';
 import { WhatsappService } from './whatsapp.service';
@@ -106,7 +106,21 @@ export class GarantiasService {
       relations: ['producto', 'historial', 'media'],
     });
     if (!garantia) throw new NotFoundException(`Garantía con ID ${id} no encontrada`);
-    return garantia;
+
+    // Buscar garantías previas del mismo producto (distintas a la actual)
+    const historialPrevio = await this.garantiaRepo.find({
+      where: {
+        productoId: garantia.productoId,
+        id: Not(id),
+      },
+      relations: ['historial'],
+      order: { fechaCreacion: 'DESC' },
+    });
+
+    return {
+      ...garantia,
+      historialPrevio,
+    };
   }
 
   // Obtener garantías por personal
