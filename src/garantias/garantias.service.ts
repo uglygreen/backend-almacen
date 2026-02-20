@@ -65,7 +65,7 @@ export class GarantiasService {
     await this.historialRepo.save(historial);
 
     // Emitir WebSocket
-    this.eventsGateway.emitirCambioGarantia({
+    this.eventsGateway.emitirNuevaGarantia({
       id: saved.id,
       folio: saved.folio,
       nuevoEstatus: EstatusGarantia.PENDIENTE_REVISION,

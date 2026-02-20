@@ -33,6 +33,10 @@ export class EventsGateway implements OnModuleInit {
     this.server.emit('alerta_almacen', { mensaje });
   }
 
+  emitirNuevaGarantia(data: any) {
+    this.server.emit('nueva_garantia', data);
+  }
+
   emitirCambioGarantia(data: any) {
     this.server.emit('garantia_actualizada', data);
   }
