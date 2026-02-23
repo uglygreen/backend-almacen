@@ -41,16 +41,31 @@ export class CreateGarantiaDto {
   @IsString()
   telefonoContacto?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Nombre de quien entrega el producto' })
   @IsOptional()
   @IsString()
   nombreContacto?: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
+  @ApiProperty({ description: 'ID del asesor que registra la garantía' })
+  @IsNotEmpty()
   @IsInt()
   @Type(() => Number)
-  perId?: number;
+  asesorId: number;
+
+  @ApiPropertyOptional({ 
+    description: 'ID del chofer que recolectará. Si el asesor la trae consigo, enviar su propio ID' 
+  })
+  @IsOptional()
+  @IsString()
+  choferRecoleccionId?: string;
+
+  @ApiPropertyOptional({ 
+    enum: EstatusGarantia, 
+    default: EstatusGarantia.PENDIENTE_REVISION 
+  })
+  @IsOptional()
+  @IsEnum(EstatusGarantia)
+  estatusActual?: EstatusGarantia;
 }
 
 export class UpdateStatusDto {
@@ -68,4 +83,12 @@ export class UpdateStatusDto {
   @IsOptional()
   @IsString()
   usuarioResponsable?: string; 
+
+  @IsOptional()
+  @IsString()
+  choferRecoleccionId?: string; // Para estados de recolección
+
+  @IsOptional()
+  @IsString()
+  choferEntregaId?: string; // Para estados de envío a cliente
 }

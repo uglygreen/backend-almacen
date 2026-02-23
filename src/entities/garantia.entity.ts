@@ -4,6 +4,8 @@ import { Producto } from './index'; // Importing from index where Producto is de
 
 export enum EstatusGarantia {
   PENDIENTE_REVISION = 'PENDIENTE',
+  EN_ESPERA_DE_RECOLECCION = 'EN_ESPERA_DE_RECOLECCION',
+  RECOLECTADO = 'RECOLECTADO',
   RECIBIDO_ALMACEN = 'RECIBIDO',
   EN_DIAGNOSTICO = 'EN_DIAGNOSTICO',
   PROCEDE_CAMBIO = 'PROCEDE_CAMBIO',
@@ -40,8 +42,14 @@ export class Garantia {
   @Column({ name: 'nombre_contacto', nullable: true })
   nombreContacto: string; // Para público general o contacto alternativo
 
-  @Column({ name: 'per_id', type: 'int', nullable: true })
-  perId: number;
+  @Column({ name: 'asesor_id', type: 'int', nullable: true }) //perId
+  asesorId: number; // El asesor que abrió la garantía
+
+  @Column({ name: 'chofer_recoleccion_id', type: 'string', nullable: true })
+  choferRecoleccionId: string; // Quién recoge del cliente -> oficina
+
+  @Column({ name: 'chofer_entrega_id', type: 'string', nullable: true })
+  choferEntregaId: string; // Quién entrega de oficina -> cliente
 
   @Column({ name: 'descripcion_falla', type: 'text' })
   descripcionFalla: string;

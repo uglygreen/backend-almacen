@@ -94,6 +94,19 @@ export class GarantiasController {
   findByPersonal(@Param('perId', ParseIntPipe) perId: number) {
     return this.garantiasService.findByPersonal(perId);
   }
+  
+
+  @Get('chofer/:choferRecoleccionId')
+  @ApiOperation({ summary: 'Obtener garantías por chofer recoleccion' })
+  findByChofer(@Param('choferRecoleccionId') choferRecoleccionId: string) {
+    return this.garantiasService.findByChofer(choferRecoleccionId);
+  }
+
+  @Get('chofer-entrega/:choferEntregaId')
+  @ApiOperation({ summary: 'Obtener garantías por chofer entrega' })
+  findByChoferEntrega(@Param('choferEntregaId') choferEntregaId: string) {
+    return this.garantiasService.findByChoferEntrega(choferEntregaId);
+  }
 
   @Get(':id')
   @ApiOperation({ summary: 'Obtener detalle de garantía' })

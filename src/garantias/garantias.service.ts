@@ -34,7 +34,7 @@ export class GarantiasService {
 
   // Crear nueva garantía
   async create(createDto: CreateGarantiaDto) {
-    const { numCli, productoId, facturaId, numFactura, descripcionFalla, telefonoContacto, nombreContacto, perId } = createDto;
+    const { numCli, productoId, facturaId, numFactura, descripcionFalla, telefonoContacto, nombreContacto, asesorId, choferRecoleccionId, estatusActual } = createDto;
 
     // Generar Folio Único (ej. GAR-TIMESTAMP-RANDOM)
     const folio = `GAR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -48,8 +48,9 @@ export class GarantiasService {
       descripcionFalla,
       telefonoContacto,
       nombreContacto,
-      perId,
-      estatusActual: EstatusGarantia.PENDIENTE_REVISION,
+      asesorId,
+      choferRecoleccionId,
+      estatusActual: estatusActual || EstatusGarantia.PENDIENTE_REVISION,
     });
 
     const saved = await this.garantiaRepo.save(nuevaGarantia);
@@ -58,7 +59,7 @@ export class GarantiasService {
     const historial = this.historialRepo.create({
       garantia: saved,
       estatusAnterior: null as unknown as EstatusGarantia,
-      estatusNuevo: EstatusGarantia.PENDIENTE_REVISION,
+      estatusNuevo: estatusActual || EstatusGarantia.PENDIENTE_REVISION,
       usuarioResponsable: nombreContacto || 'SISTEMA',
       comentario: 'Registro inicial de garantía',
     });
@@ -68,7 +69,7 @@ export class GarantiasService {
     this.eventsGateway.emitirNuevaGarantia({
       id: saved.id,
       folio: saved.folio,
-      nuevoEstatus: EstatusGarantia.PENDIENTE_REVISION,
+      nuevoEstatus: estatusActual || EstatusGarantia.PENDIENTE_REVISION,
       fecha: new Date(),
     });
 
@@ -124,9 +125,27 @@ export class GarantiasService {
   }
 
   // Obtener garantías por personal
-  async findByPersonal(perId: number) {
+  async findByPersonal(asesorId: number) {
     return this.garantiaRepo.find({
-      where: { perId },
+      where: { asesorId },
+      order: { fechaCreacion: 'DESC' },
+      relations: ['producto', 'media'],
+    });
+  }
+
+  // Obtener garantías por chofer recoleccion
+  async findByChofer(choferRecoleccionId: string) {
+    return this.garantiaRepo.find({
+      where: { choferRecoleccionId },
+      order: { fechaCreacion: 'DESC' },
+      relations: ['producto', 'media'],
+    });
+  }
+
+    // Obtener garantías por chofer entrega
+  async findByChoferEntrega(choferEntregaId: string) {
+    return this.garantiaRepo.find({
+      where: { choferEntregaId },
       order: { fechaCreacion: 'DESC' },
       relations: ['producto', 'media'],
     });
@@ -156,7 +175,14 @@ export class GarantiasService {
 
   // Cambio de estatus
   async updateStatus(id: number, updateDto: UpdateStatusDto) {
-    const { nuevoEstatus, comentario, usuarioResponsable } = updateDto;
+    const { 
+    nuevoEstatus, 
+    comentario, 
+    usuarioResponsable, 
+    choferRecoleccionId, 
+    choferEntregaId 
+  } = updateDto;
+
 
     const garantia = await this.findOne(id);
     const estatusAnterior = garantia.estatusActual;
@@ -165,17 +191,37 @@ export class GarantiasService {
       return garantia; // No hay cambio
     }
 
+    // 1. Lógica de Asignación de Logística
+    if (nuevoEstatus === EstatusGarantia.EN_ESPERA_DE_RECOLECCION || nuevoEstatus === EstatusGarantia.RECOLECTADO) {
+      if (choferRecoleccionId) {
+        garantia.choferRecoleccionId = choferRecoleccionId;
+      }
+    }
+
+    if (nuevoEstatus === EstatusGarantia.ENVIADO_CLIENTE) {
+      if (choferEntregaId) {
+        garantia.choferEntregaId = choferEntregaId;
+      }
+    }
+
     // Actualizar estatus
     garantia.estatusActual = nuevoEstatus;
     await this.garantiaRepo.save(garantia);
 
-    // Registrar historial
+    // Registrar historial con detalle de quién lleva el producto
+    let comentarioFinal = comentario || '';
+    if (nuevoEstatus === EstatusGarantia.RECOLECTADO && choferRecoleccionId) {
+      comentarioFinal += ` [Asignado a chofer/asesor ID: ${choferRecoleccionId} para traslado a oficina]`;
+    }
+    if (nuevoEstatus === EstatusGarantia.ENVIADO_CLIENTE && choferEntregaId) {
+      comentarioFinal += ` [Asignado a chofer/asesor ID: ${choferEntregaId} para entrega al cliente]`;
+    }
     const historial = this.historialRepo.create({
       garantia,
-      estatusAnterior: estatusAnterior || (null as unknown as EstatusGarantia),
+      estatusAnterior: estatusAnterior || null,
       estatusNuevo: nuevoEstatus,
       usuarioResponsable: usuarioResponsable || 'SISTEMA',
-      comentario: comentario || '',
+      comentario: comentarioFinal,
     });
     await this.historialRepo.save(historial);
 
@@ -184,6 +230,8 @@ export class GarantiasService {
       id: garantia.id,
       folio: garantia.folio,
       nuevoEstatus,
+      choferRecoleccionId: garantia.choferRecoleccionId,
+      choferEntregaId: garantia.choferEntregaId,
       fecha: new Date(),
     });
 
