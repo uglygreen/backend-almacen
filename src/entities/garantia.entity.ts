@@ -45,10 +45,10 @@ export class Garantia {
   @Column({ name: 'asesor_id', type: 'int', nullable: true }) //perId
   asesorId: number; // El asesor que abrió la garantía
 
-  @Column({ name: 'chofer_recoleccion_id', type: 'string', nullable: true })
+  @Column({ name: 'chofer_recoleccion_id', nullable: true })
   choferRecoleccionId: string; // Quién recoge del cliente -> oficina
 
-  @Column({ name: 'chofer_entrega_id', type: 'string', nullable: true })
+  @Column({ name: 'chofer_entrega_id', nullable: true })
   choferEntregaId: string; // Quién entrega de oficina -> cliente
 
   @Column({ name: 'descripcion_falla', type: 'text' })
