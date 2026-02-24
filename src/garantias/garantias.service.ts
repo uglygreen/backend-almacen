@@ -157,7 +157,9 @@ export class GarantiasService {
       EstatusGarantia.PENDIENTE_REVISION,
       EstatusGarantia.RECIBIDO_ALMACEN,
       EstatusGarantia.EN_DIAGNOSTICO,
-      EstatusGarantia.PROCEDE_CAMBIO,
+      EstatusGarantia.ENVIADO_RECOFIX,
+      EstatusGarantia.ENVIADO_TRUPER,
+      EstatusGarantia.REPARADO,
       EstatusGarantia.PROCEDE_NOTA_CREDITO,
       EstatusGarantia.NO_PROCEDE,     // Se considera activa hasta que se notifica/devuelve
       EstatusGarantia.ENVIADO_CLIENTE // En tránsito
