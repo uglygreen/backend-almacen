@@ -1,4 +1,5 @@
-import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Personal } from './personal.entity';
 
 @Entity('CLI')
 export class Cliente {
@@ -199,4 +200,13 @@ export class Cliente {
 
   @Column({ name: 'XWEB', length: 2 })
   xWeb: string;
+
+  @ManyToOne(() => Personal, { 
+    createForeignKeyConstraints: false
+  })
+  @JoinColumn({ 
+    name: 'VENDEDORID',          // La columna en la tabla CLI
+    referencedColumnName: 'perId' // La propiedad en la entidad Personal
+  })
+  vendedorDetalle: Personal;
 }

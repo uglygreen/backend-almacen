@@ -18,6 +18,8 @@ import { ConfigAlmacen } from './entities/config-almacen.entity';
 import { GarantiasModule } from './garantias/garantias.module';
 import { Garantia, HistorialEstatusGarantia, MediaGarantia } from './entities/garantia.entity';
 import { EventsModule } from './events/events.module';
+import { Personal } from './entities/personal.entity';
+import { PersonalModule } from './personal/personal.module';
 
 @Module({
   imports: [
@@ -52,7 +54,7 @@ import { EventsModule } from './events/events.module';
       username: 'web',
       password: 'webfmolvera17',
       database: 'datosb',
-      entities: [Cliente], // Registramos la entidad Cliente
+      entities: [Cliente, Personal], // Registramos la entidad Cliente
       synchronize: false,
     }),
 
@@ -63,6 +65,7 @@ import { EventsModule } from './events/events.module';
     UsuariosModule,
     InventarioModule,
     ClientesModule,
+    PersonalModule,
     ConfigAlmacenModule,
     GarantiasModule,
     EventsModule,

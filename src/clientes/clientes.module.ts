@@ -3,11 +3,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ClientesService } from './clientes.service';
 import { ClientesController } from './clientes.controller';
 import { Cliente } from '../entities/cliente.entity';
+import { Personal } from 'src/entities/personal.entity';
 
 @Module({
   imports: [
     // Registramos la entidad Cliente en la conexión 'legacy_db'
-    TypeOrmModule.forFeature([Cliente], 'legacy_db'),
+    TypeOrmModule.forFeature([Cliente,Personal], 'legacy_db'),
   ],
   controllers: [ClientesController],
   providers: [ClientesService],
