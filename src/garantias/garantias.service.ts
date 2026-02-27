@@ -178,13 +178,16 @@ export class GarantiasService {
   // Cambio de estatus
   async updateStatus(id: number, updateDto: UpdateStatusDto) {
     const { 
-    nuevoEstatus, 
-    comentario, 
-    usuarioResponsable, 
-    choferRecoleccionId, 
-    choferEntregaId 
-  } = updateDto;
-
+      nuevoEstatus, 
+      comentario, 
+      usuarioResponsable, 
+      choferRecoleccionId, 
+      choferEntregaId,
+      domicilioId,
+      direccionTexto,
+      latitud,
+      longitud
+    } = updateDto;
 
     const garantia = await this.findOne(id);
     const estatusAnterior = garantia.estatusActual;
@@ -194,10 +197,33 @@ export class GarantiasService {
     }
 
     // 1. Lógica de Asignación de Logística
-    if (nuevoEstatus === EstatusGarantia.EN_ESPERA_DE_RECOLECCION || nuevoEstatus === EstatusGarantia.RECOLECTADO) {
+    if (nuevoEstatus === EstatusGarantia.EN_ESPERA_DE_RECOLECCION) {
+      // Validar que haya datos de ubicación si no es auto-recolección
+      // Si es auto-recolección (el asesor la lleva), los datos pueden ser nulos o parciales
+      if (!domicilioId && !direccionTexto && !latitud && !longitud) {
+         // Podríamos lanzar warning, pero permitimos flexibilidad según requerimiento
+      }
+      
+      garantia.domicilioId = domicilioId ?? null;
+      garantia.direccionTexto = direccionTexto ?? null;
+      garantia.latitud = latitud ?? null;
+      garantia.longitud = longitud ?? null;
+
       if (choferRecoleccionId) {
         garantia.choferRecoleccionId = choferRecoleccionId;
       }
+    }
+
+    if (nuevoEstatus === EstatusGarantia.RECOLECTADO) {
+      // Si se envía choferRecoleccionId, se actualiza
+      if (choferRecoleccionId) {
+        garantia.choferRecoleccionId = choferRecoleccionId;
+      } 
+      // Si no se envía y no tiene uno asignado, es obligatorio asignarlo ahora
+      else if (!garantia.choferRecoleccionId) {
+        throw new BadRequestException('Debe asignar un chofer/asesor para marcar como recolectado.');
+      }
+    
     }
 
     if (nuevoEstatus === EstatusGarantia.ENVIADO_CLIENTE) {
@@ -212,12 +238,13 @@ export class GarantiasService {
 
     // Registrar historial con detalle de quién lleva el producto
     let comentarioFinal = comentario || '';
-    if (nuevoEstatus === EstatusGarantia.RECOLECTADO && choferRecoleccionId) {
-      comentarioFinal += ` [Asignado a chofer/asesor ID: ${choferRecoleccionId} para traslado a oficina]`;
+    if (nuevoEstatus === EstatusGarantia.RECOLECTADO && garantia.choferRecoleccionId) {
+      comentarioFinal += ` [Recolectado por ID: ${garantia.choferRecoleccionId}]`;
     }
-    if (nuevoEstatus === EstatusGarantia.ENVIADO_CLIENTE && choferEntregaId) {
-      comentarioFinal += ` [Asignado a chofer/asesor ID: ${choferEntregaId} para entrega al cliente]`;
+    if (nuevoEstatus === EstatusGarantia.ENVIADO_CLIENTE && garantia.choferEntregaId) {
+      comentarioFinal += ` [Enviado con chofer ID: ${garantia.choferEntregaId}]`;
     }
+    
     const historial = this.historialRepo.create({
       garantia,
       estatusAnterior: estatusAnterior || null,

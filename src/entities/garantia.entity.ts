@@ -44,7 +44,7 @@ export class Garantia {
   @Column({ name: 'nombre_contacto', nullable: true })
   nombreContacto: string; // Para público general o contacto alternativo
 
-  @Column({ name: 'asesor_id', type: 'int', nullable: true }) //perId
+  @Column({ name: 'asesor_id', type: 'int', nullable: true })
   asesorId: number; // El asesor que abrió la garantía
 
   @Column({ name: 'chofer_recoleccion_id', nullable: true })
@@ -55,6 +55,18 @@ export class Garantia {
 
   @Column({ name: 'descripcion_falla', type: 'text' })
   descripcionFalla: string;
+
+  @Column({ name: 'domicilio_id', type: 'int', nullable: true })
+  domicilioId: number | null; // El DOMID de tu base de datos de clientes
+
+  @Column({ name: 'direccion_texto', type: 'text', nullable: true })
+  direccionTexto: string | null; // La dirección legible (ej. Calle Falsa 123, Col. Centro)
+
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  latitud: number | null;
+
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  longitud: number | null;
 
   @Column({
     name: 'estatus_actual',

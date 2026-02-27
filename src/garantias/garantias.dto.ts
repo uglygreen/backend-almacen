@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsDecimal, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { EstatusGarantia } from '../entities/garantia.entity';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -84,11 +84,36 @@ export class UpdateStatusDto {
   @IsString()
   usuarioResponsable?: string; 
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   choferRecoleccionId?: string; // Para estados de recolección
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   choferEntregaId?: string; // Para estados de envío a cliente
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  domicilioId?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  direccionTexto?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDecimal({ decimal_digits: '10,7' })
+  @Type(() => Number)
+  latitud?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDecimal({ decimal_digits: '11,8' })
+  @Type(() => Number)
+  longitud?: number ;
 }
