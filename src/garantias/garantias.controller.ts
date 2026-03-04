@@ -67,6 +67,51 @@ export class GarantiasController {
     return await this.garantiasService.findOne(garantia.id);
   }
 
+  @Post(':id/files')
+  @ApiOperation({ summary: 'Subir evidencia a garantía existente (solo PENDIENTE)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        files: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+    },
+  })
+  @UseInterceptors(FilesInterceptor('files', 5, {
+    storage: diskStorage({
+      destination: './uploads/garantias',
+      filename: (req, file, cb) => {
+        const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
+        return cb(null, `${randomName}${extname(file.originalname)}`);
+      },
+    }),
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10 MB por archivo
+    },
+    fileFilter: (req, file, cb) => {
+      // Validar que sea imagen o video
+      if (!file.mimetype.match(/\/(jpg|jpeg|png|gif|mp4|mov|avi|quicktime)$/)) {
+        return cb(new BadRequestException('Solo se permiten imágenes y videos (jpg, png, mp4, mov)'), false);
+      }
+      cb(null, true);
+    },
+  }))
+  async uploadFiles(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFiles() files: Array<Express.Multer.File>,
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No se han subido archivos');
+    }
+
+    // Delegar lógica al servicio
+    return await this.garantiasService.uploadFiles(id, files);
+  }
+
   @Get()
   @ApiOperation({ summary: 'Listar garantías (paginado)' })
   findAll(

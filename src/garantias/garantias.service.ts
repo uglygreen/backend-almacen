@@ -372,4 +372,26 @@ export class GarantiasService {
     });
     return await this.mediaRepo.save(media);
   }
+
+  // Subir archivos a garantía existente (sin cambiar estatus)
+  async uploadFiles(id: number, files: Array<Express.Multer.File>) {
+    const garantia = await this.findOne(id);
+
+    if (garantia.estatusActual !== EstatusGarantia.PENDIENTE_REVISION) {
+      throw new BadRequestException('Solo se pueden agregar evidencias si la garantía está en PENDIENTE_REVISION');
+    }
+
+    const uploadedMedia: MediaGarantia[] = [];
+    for (const file of files) {
+      const url = `/uploads/garantias/${file.filename}`;
+      const tipo = file.mimetype.startsWith('image/') ? 'imagen' : 'video';
+      const media = await this.addMedia(garantia.id, url, tipo);
+      uploadedMedia.push(media);
+    }
+
+    return {
+      message: 'Archivos subidos correctamente',
+      files: uploadedMedia,
+    };
+  }
 }
