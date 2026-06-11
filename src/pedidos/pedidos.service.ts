@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DetallePedido, Pedido, StatusGlobal, StatusLinea, Surtido, Zona, StatusEntrega } from 'src/entities';
 import { In, IsNull, MoreThanOrEqual, Not, Repository } from 'typeorm';
@@ -9,12 +9,29 @@ import bwipjs from 'bwip-js';
 
 @Injectable()
 export class PedidosService {
+  private readonly logger = new Logger(PedidosService.name);
+
   constructor(
     @InjectRepository(Pedido) private pedidoRepo: Repository<Pedido>,
     @InjectRepository(DetallePedido) private detalleRepo: Repository<DetallePedido>,
     @InjectRepository(Surtido) private surtidoRepo: Repository<Surtido>,
     private eventsGateway: EventsGateway,
   ) {}
+
+  private async logPedidoFechaTrace(contexto: string, pedidoId: number) {
+    const pedido = await this.pedidoRepo.findOne({
+      where: { id: pedidoId },
+      select: ['id', 'statusGlobal', 'fechaInicioCc', 'fechaFinCc', 'fechaInicioAg', 'fechaFinAg'],
+    });
+
+    this.logger.warn(JSON.stringify({
+      contexto,
+      pedidoId,
+      procesoAhora: new Date().toString(),
+      procesoIso: new Date().toISOString(),
+      pedido,
+    }));
+  }
 
   // --- CONSULTAS ---
 
@@ -84,6 +101,26 @@ export class PedidosService {
     });
   }
 
+  getPedidosCompletadosByAlmacenista(id: number) {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    return this.pedidoRepo.find({
+      where: [
+        {
+          surtidorCcId: id,
+          fechaFinCc: MoreThanOrEqual(hoy),
+        },
+        {
+          surtidorAgId: id,
+          fechaFinAg: MoreThanOrEqual(hoy),
+        },
+      ],
+      relations: ['surtidorCc', 'surtidorAg', 'detalles', 'detalles.producto', 'detalles.producto.codigos'],
+      order: { fechaCreacion: 'DESC' },
+    });
+  }
+
   getDetalle(id: number) {
     return this.pedidoRepo.findOne({
       where: { id },
@@ -114,40 +151,75 @@ export class PedidosService {
     });
     if (!pedido) throw new NotFoundException('Pedido no encontrado');
 
+    // Verificar si ya está asignado en esa zona para evitar duplicar el registro en surtido
+    const yaEstabaAsignadoCC = pedido.surtidorCcId !== null;
+    const yaEstabaAsignadoAG = pedido.surtidorAgId !== null;
+
     if (dto.zona === 'CC') {
       pedido.surtidorCcId = dto.userId;
       pedido.fechaInicioCc = new Date();
       pedido.statusGlobal = StatusGlobal.EN_SURTIDO_CC;
+
+      await this.pedidoRepo.update(
+        { idExternoDoc: id },
+        {
+          surtidorCcId: dto.userId,
+          fechaInicioCc: new Date(),
+          statusGlobal: StatusGlobal.EN_SURTIDO_CC,
+        },
+      );
+      await this.logPedidoFechaTrace('asignarUsuario_CC', pedido.id);
     } else {
       pedido.surtidorAgId = dto.userId;
       pedido.fechaInicioAg = new Date();
       pedido.statusGlobal = StatusGlobal.EN_SURTIDO_AG;
+
+      await this.pedidoRepo.update(
+        { idExternoDoc: id },
+        {
+          surtidorAgId: dto.userId,
+          fechaInicioAg: new Date(),
+          statusGlobal: StatusGlobal.EN_SURTIDO_AG,
+        },
+      );
+      await this.logPedidoFechaTrace('asignarUsuario_AG', pedido.id);
     }
+    const actualizado = await this.pedidoRepo.findOne({
+      where: { idExternoDoc: id },
+      relations: ['detalles'],
+    });
+    if (!actualizado) throw new NotFoundException('Pedido no encontrado');
 
-    const actualizado = await this.pedidoRepo.save(pedido);
+    // Solo creamos el registro en la tabla de surtido si es la primera vez que se asigna en esa zona
+    const debeRegistrarSurtido = (dto.zona === 'CC' && !yaEstabaAsignadoCC) || (dto.zona === 'AG' && !yaEstabaAsignadoAG);
 
-    try {
-      // Calculamos partidas (items únicos) que corresponden a la zona
-      // Nota: Si se requiere el total del pedido independientemente de la zona, quitar el filtro.
-      // Pero dado que 'lugar' es específico ('cc' o 'al'), filtramos por zona.
-      const zonaTarget = dto.zona === 'CC' ? Zona.CC : Zona.AG;
-      const partidasCount = pedido.detalles.filter((d) => d.zonaSurtido === zonaTarget).length;
-      // Si no hay partidas para esa zona (raro si se asigna), podría ser 0.
-      // Si el usuario quiere TODO el pedido: const partidasCount = pedido.detalles.length;
+    if (debeRegistrarSurtido) {
+      try {
+        // Calculamos partidas (items únicos) que corresponden a la zona
+        const zonaTarget = dto.zona === 'CC' ? Zona.CC : Zona.AG;
+        const partidasCount = pedido.detalles.filter((d) => d.zonaSurtido === zonaTarget).length;
 
-      const surtido = this.surtidoRepo.create({
-        idAlmacenista: dto.userId,
-        fecha: new Date().toISOString().split('T')[0],
-        hora: new Date().toTimeString().split(' ')[0],
-        partidas: partidasCount,
-        pedido: parseInt(pedido.folioExterno),
-        lugar: dto.zona === 'CC' ? 'cc' : 'al',
-        serie: pedido.serie,
-      });
+        // Obtener la fecha y hora actual (ya ajustada globalmente por TZ)
+        const now = new Date();
+        const pad = (num: number) => num.toString().padStart(2, '0');
+        
+        const fechaLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+        const horaLocal = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
-      await this.surtidoRepo.save(surtido);
-    } catch (error) {
-      console.error('Error al registrar en tabla surtido:', error);
+        const surtido = this.surtidoRepo.create({
+          idAlmacenista: dto.userId,
+          fecha: fechaLocal,
+          hora: horaLocal,
+          partidas: partidasCount,
+          pedido: parseInt(pedido.folioExterno),
+          lugar: dto.zona === 'CC' ? 'cc' : 'al',
+          serie: pedido.serie,
+        });
+
+        await this.surtidoRepo.save(surtido);
+      } catch (error) {
+        this.logger.error('Error al guardar en tabla surtido', error);
+      }
     }
 
     this.eventsGateway.emitirCambioEstado({ idPedido: id, nuevoEstado: pedido.statusGlobal });
@@ -173,9 +245,21 @@ export class PedidosService {
       pedido.surtidorAgId = dto.userId;
       pedido.fechaInicioAg = new Date();
       pedido.statusGlobal = StatusGlobal.EN_SURTIDO_AG;
-    }
 
-    const pedidoAsignado = await this.pedidoRepo.save(pedido);
+      await this.pedidoRepo.update(
+        { id: pedido.id },
+        {
+          surtidorAgId: dto.userId,
+          fechaInicioAg: new Date(),
+          statusGlobal: StatusGlobal.EN_SURTIDO_AG,
+        },
+      );
+      await this.logPedidoFechaTrace('asignarSiguienteDisponible_AG', pedido.id);
+    }
+    const pedidoAsignado = await this.pedidoRepo.findOne({ where: { id: pedido.id } });
+    if (!pedidoAsignado) {
+      throw new NotFoundException('No hay pedidos disponibles en este momento.');
+    }
 
     this.eventsGateway.emitirCambioEstado({
       idPedido: pedidoAsignado.id,
@@ -210,22 +294,62 @@ export class PedidosService {
     });
     if (!pedido) throw new NotFoundException('Pedido no encontrado');
 
+    // COMENTADO TEMPORALMENTE: TODO SE MARCA COMO COMPLETADO EN AG POR AHORA
+    /*
     if (dto.zona === 'CC') {
       pedido.fechaFinCc = new Date();
-
       const tieneItemsAG = pedido.detalles.some((d) => d.zonaSurtido === Zona.AG);
 
       if (tieneItemsAG) {
         pedido.statusGlobal = StatusGlobal.PENDIENTE_AG;
+
+        await this.pedidoRepo.update(
+          { id },
+          {
+            fechaFinCc: new Date(),
+            statusGlobal: StatusGlobal.PENDIENTE_AG,
+          },
+        );
+        await this.logPedidoFechaTrace('finalizarEtapa_CC_pendiente_ag', pedido.id);
       } else {
         pedido.statusGlobal = StatusGlobal.COMPLETADO;
+
+        await this.pedidoRepo.update(
+          { id },
+          {
+            fechaFinCc: new Date(),
+            statusGlobal: StatusGlobal.COMPLETADO,
+          },
+        );
+        await this.logPedidoFechaTrace('finalizarEtapa_CC_completado', pedido.id);
       }
     } else if (dto.zona === 'AG') {
-      pedido.fechaFinAg = new Date();
-      pedido.statusGlobal = StatusGlobal.COMPLETADO;
-    }
+    */
 
-    const guardado = await this.pedidoRepo.save(pedido);
+    // Lógica forzada actual (Todo cuenta como AG y termina el pedido)
+    pedido.fechaFinAg = new Date();
+    if (dto.zona === 'CC') {
+      pedido.fechaFinCc = new Date();
+    }
+    pedido.statusGlobal = StatusGlobal.COMPLETADO;
+
+    await this.pedidoRepo.update(
+      { id },
+      {
+        fechaFinAg: new Date(),
+        ...(dto.zona === 'CC' && { fechaFinCc: new Date() }),
+        statusGlobal: StatusGlobal.COMPLETADO,
+      },
+    );
+    await this.logPedidoFechaTrace(dto.zona === 'CC' ? 'finalizarEtapa_CC_forzado_AG' : 'finalizarEtapa_AG', pedido.id);
+    
+    /* } */ // Fin del bloque COMENTADO TEMPORALMENTE
+
+    const guardado = await this.pedidoRepo.findOne({
+      where: { id },
+      relations: ['detalles'],
+    });
+    if (!guardado) throw new NotFoundException('Pedido no encontrado');
 
     if (guardado.statusGlobal === StatusGlobal.PENDIENTE_AG) {
       this.eventsGateway.emitirNuevoPedido(guardado);
@@ -302,6 +426,49 @@ export class PedidosService {
     this.eventsGateway.emitirCambioStatusEntrega({ idPedido: id, nuevoStatusEntrega: nuevoStatus });
 
     return actualizado;
+  }
+
+  async cleanupDuplicates() {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    // Buscar duplicados agrupando por pedido y producto, filtrando por fecha de creación del pedido >= hoy
+    const duplicadosRaw = await this.detalleRepo.query(`
+      SELECT dp.pedido_id, dp.producto_id, COUNT(*) as c
+      FROM detalle_pedidos dp
+      JOIN pedidos p ON dp.pedido_id = p.id
+      WHERE p.fecha_creacion >= ?
+      GROUP BY dp.pedido_id, dp.producto_id
+      HAVING c > 1
+    `, [hoy]);
+
+    let totalEliminados = 0;
+
+    for (const dup of duplicadosRaw) {
+      // Obtener todos los registros de ese producto en ese pedido
+      const lineas = await this.detalleRepo.find({
+        where: { 
+          pedido: { id: dup.pedido_id }, 
+          producto: { id: dup.producto_id } 
+        },
+        order: { 
+          cantidadSurtida: 'DESC', // Preferimos el que ya tenga avance (mayor cantidad surtida)
+          id: 'ASC'                // Si hay empate, preservamos el registro más antiguo (menor ID)
+        }
+      });
+
+      if (lineas.length > 1) {
+        // El primero de la lista es el que conservamos
+        const [original, ...restantes] = lineas;
+        
+        for (const r of restantes) {
+          await this.detalleRepo.delete(r.id);
+          totalEliminados++;
+        }
+      }
+    }
+
+    return { message: `Se eliminaron ${totalEliminados} registros duplicados de detalle_pedidos (del día actual).` };
   }
 
   private async crearTicket(doc: PDFKit.PDFDocument, pedido: Pedido, bultoActual: number, totalBultos: number) {

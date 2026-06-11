@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+coverage
+.git
+.gitignore
+.env
+.env.local
+.env.production
+npm-debug.log
+*.log
+Dockerfile*
+docker-compose*.yml
+backend-almacen

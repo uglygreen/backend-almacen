@@ -20,6 +20,21 @@ export class SincronizacionService {
 
   private isSyncing = false;
 
+  private async logPedidoFechaTrace(contexto: string, pedidoId: number) {
+    const pedido = await this.dataSourceSistemas.getRepository(Pedido).findOne({
+      where: { id: pedidoId },
+      select: ['id', 'statusGlobal', 'fechaInicioCc', 'fechaFinCc', 'fechaInicioAg', 'fechaFinAg'],
+    });
+
+    this.logger.warn(JSON.stringify({
+      contexto,
+      pedidoId,
+      procesoAhora: new Date().toString(),
+      procesoIso: new Date().toISOString(),
+      pedido,
+    }));
+  }
+
   constructor(
     // Conexión a tu BD principal (Escritura)
     @InjectDataSource('default') private dataSourceSistemas: DataSource,
@@ -60,9 +75,9 @@ export class SincronizacionService {
         JOIN CLI C ON D.CLIENTEID = C.CLIENTEID
         LEFT OUTER JOIN CARCLI CAR ON D.CLIENTEID = CAR.CARID
         LEFT OUTER JOIN CLA ON CAR.CARACTERISTICA = CLA.CLAID
-        WHERE D.TIPO IN ('C', 'W') AND D.ESTADO= 'A' AND D.FECHA = CURDATE() AND CLA.CLATEXTO IN ('01', '02') AND D.DOCID > ?
+        WHERE D.TIPO IN ('C', 'W') AND D.ESTADO= 'A' AND D.FECHA = CURDATE() AND (CLA.CLATEXTO IN ('01', '02') OR CLA.CLATEXTO IS NULL) AND D.DOCID > ?
         ORDER BY D.DOCID ASC
-        LIMIT 150
+        LIMIT 200
         `, [ultimoId]);
 
         if (nuevosPedidosRaw.length > 0) {
@@ -151,19 +166,35 @@ export class SincronizacionService {
         await queryRunner.startTransaction();
 
         try {
-        // Obtenemos todos los detalles para ESTE pedido
-        const items = await this.dataSourceLegacy.query(`
+        // Obtenemos los datos de cabecera del pedido (Cliente, Nota, etc.)
+        // Usamos LIMIT 1 para evitar duplicidad si el cliente tiene múltiples características
+        const headerData = await this.dataSourceLegacy.query(`
             SELECT 
-                D.DOCID, D.NUMERO, D.SERIE, D.FECHA, C.NOMBRE AS CLIENTE, D.NOTA,
-                I.ARTICULOID,I.CLVPROV, I.CLAVE, I.DESCRIPCIO, I.CODBAR, I.XIMAGEN2, DS.DESCANTIDAD, A.UBICACION, CLA.CLATEXTO
+                D.DOCID, D.CLIENTEID, D.NUMERO, D.SERIE, D.FECHA, C.NOMBRE AS CLIENTE, D.NOTA, CLA.CLATEXTO
             FROM DOC D
-            JOIN DES DS ON D.DOCID = DS.DESDOCID
-            JOIN INV I ON DS.DESARTID = I.ARTICULOID
-            LEFT JOIN ALM A ON I.ARTICULOID = A.ARTICULOID AND A.ALMACEN = 1
             JOIN CLI C ON D.CLIENTEID = C.CLIENTEID
             LEFT OUTER JOIN CARCLI CAR ON D.CLIENTEID = CAR.CARID
             LEFT OUTER JOIN CLA ON CAR.CARACTERISTICA = CLA.CLAID
-            WHERE D.DOCID = ?
+            WHERE D.DOCID = ? AND CLA.CLATEXTO IN ('01', '02')
+            LIMIT 1
+        `, [docId]);
+
+        if (headerData.length === 0) {
+          this.logger.warn(`DOCID ${docId} no retornó cabecera válida (posiblemente sin CLATEXTO 01/02), saltando.`);
+          if (docId > maxProcesado) maxProcesado = docId;
+          continue;
+        }
+
+        const header = headerData[0];
+
+        // Obtenemos los detalles (Items) SIN hacer join con Cliente/Caracteristicas para evitar producto cartesiano
+        const items = await this.dataSourceLegacy.query(`
+            SELECT 
+                I.ARTICULOID, I.CLVPROV, I.CLAVE, I.DESCRIPCIO, I.CODBAR, I.XIMAGEN2, DS.DESCANTIDAD, A.UBICACION
+            FROM DES DS
+            JOIN INV I ON DS.DESARTID = I.ARTICULOID
+            LEFT JOIN ALM A ON I.ARTICULOID = A.ARTICULOID AND A.ALMACEN = 1
+            WHERE DS.DESDOCID = ?
         `, [docId]);
 
         if (items.length === 0) {
@@ -178,7 +209,10 @@ export class SincronizacionService {
         for (const item of items) {
           let zona: Zona = Zona.AG;
           
-          if (['OFICINA', 'SUPERIOR', 'MAQUINARIA', 'POLVOS', 'MANGUERA'].includes(item.UBICACION)) {
+          if (item.UBICACION && (
+            item.UBICACION === 'PASILLO BA' || 
+            item.UBICACION === 'POLVOS'
+          )) {
              zona = Zona.AG;
           } else if (item.UBICACION && item.UBICACION.startsWith('P')) {
              const charDespuesP = item.UBICACION.charAt(1);
@@ -208,9 +242,31 @@ export class SincronizacionService {
             });
             await queryRunner.manager.save(producto);
           } else {
-             if (producto.ubicacion !== item.UBICACION || producto.img !== item.XIMAGEN2) {
+             let requiresUpdate = false;
+             
+             if (producto.ubicacion !== item.UBICACION) {
                producto.ubicacion = item.UBICACION;
+               producto.zonaAsignada = zona; // Actualizar zona en caso de cambio de ubicación
+               requiresUpdate = true;
+             }
+             if (producto.img !== item.XIMAGEN2) {
                producto.img = item.XIMAGEN2;
+               requiresUpdate = true;
+             }
+             if (producto.clave !== item.CLAVE) {
+               producto.clave = item.CLAVE;
+               requiresUpdate = true;
+             }
+             if (producto.nombre !== item.DESCRIPCIO) {
+               producto.nombre = item.DESCRIPCIO;
+               requiresUpdate = true;
+             }
+             if (producto.codbar !== item.CODBAR) {
+               producto.codbar = item.CODBAR;
+               requiresUpdate = true;
+             }
+
+             if (requiresUpdate) {
                await queryRunner.manager.save(producto);
              }
           }
@@ -219,12 +275,32 @@ export class SincronizacionService {
           if (!productosProcesadosEnLote.has(producto.id)) {
             productosProcesadosEnLote.add(producto.id);
             
-            const codigosDelProducto = codigosExtraMap.get(item.ARTICULOID);
+            const codigosDelProductoLegacy = codigosExtraMap.get(item.ARTICULOID) || [];
             
-            if (codigosDelProducto && codigosDelProducto.length > 0) {
+            // Obtener los códigos actuales en nuestra BD local para este producto
+            const codigosLocales = await queryRunner.manager.find(ProductoCodigo, { 
+              where: { producto: { id: producto.id } } 
+            });
+
+            // Mapear para facilitar comparación
+            const setLegacy = new Set(codigosDelProductoLegacy.map(c => `${c.CODIGO}-${parseInt(String(c.PREFIJO).replace('*', ''), 10) || 1}`));
+            const setLocal = new Set(codigosLocales.map(c => `${c.codigo}-${c.prefijo}`));
+
+            // Si hay diferencias entre los de legacy y los locales, borramos e insertamos los nuevos
+            let codigosDiferentes = setLegacy.size !== setLocal.size;
+            if (!codigosDiferentes) {
+              for (const cod of setLegacy) {
+                if (!setLocal.has(cod)) {
+                  codigosDiferentes = true;
+                  break;
+                }
+              }
+            }
+
+            if (codigosDiferentes) {
               await queryRunner.manager.delete(ProductoCodigo, { producto: { id: producto.id } });
 
-              for (const cod of codigosDelProducto) {
+              for (const cod of codigosDelProductoLegacy) {
                 const prefijoLimpio = parseInt(String(cod.PREFIJO).replace('*', ''), 10) || 1;
                 
                 const nuevoCodigo = queryRunner.manager.create(ProductoCodigo, {
@@ -246,17 +322,18 @@ export class SincronizacionService {
         }
 
        
-        const nota = items[0].NOTA || '';
+        const nota = header.NOTA || '';
         const esRecogeEnOficina = nota.includes('CLIENTE RECOGE EN OFICINA');
 
         const nuevoPedido = queryRunner.manager.create(Pedido, {
           idExternoDoc: docId,
-          folioExterno: items[0].NUMERO,
-          serie: items[0].SERIE,
-          clienteNombre: items[0].CLIENTE,
-          fechaCreacion: items[0].FECHA || new Date(),
+          clienteId: header.CLIENTEID,
+          folioExterno: header.NUMERO,
+          serie: header.SERIE,
+          clienteNombre: header.CLIENTE,
+          fechaCreacion: header.FECHA || new Date(),
           requiereCuartoChico: requiereCuartoChico,
-          clatexto: items[0].CLATEXTO == '01' ? 'TX' : 'QRO',
+          clatexto: header.CLATEXTO == '01' ? 'TX' : 'QRO',
           statusGlobal: requiereCuartoChico ? StatusGlobal.ESPERA_CC : StatusGlobal.PENDIENTE_AG,
           esRecogeEnOficina: esRecogeEnOficina,
         });
@@ -345,10 +422,18 @@ export class SincronizacionService {
           { idExternoDoc: In(idsFacturados) },
           { 
             statusGlobal: StatusGlobal.COMPLETADO, 
-            // Opcional: Podrías agregar una nota o fecha de cierre automático
-            fechaFinAg: new Date() 
+            fechaFinAg: new Date()
           }
         );
+
+        const pedidosCerradosLog = await pedidoRepo.find({
+          where: { idExternoDoc: In(idsFacturados) },
+          select: ['id'],
+        });
+
+        for (const pedido of pedidosCerradosLog) {
+          await this.logPedidoFechaTrace('verificarPedidosFacturados', pedido.id);
+        }
 
         // --- Actualización específica para pedidos de Oficina ---
         const pedidosOficinaFacturados = pedidosActivos

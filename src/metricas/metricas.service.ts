@@ -47,24 +47,19 @@ export class MetricasService {
     if (periodo === 'mes') fechaFiltro = 'DATE_SUB(NOW(), INTERVAL 30 DAY)';
 
     const campoUsuario = zona === 'CC' ? 'surtidor_cc_id' : 'surtidor_ag_id';
-    const campoFechaFin = zona === 'CC' ? 'fecha_fin_cc' : 'fecha_fin_ag';
     const campoFechaInicio = zona === 'CC' ? 'fecha_inicio_cc' : 'fecha_inicio_ag';
     const zonaEnum = zona === 'CC' ? 'CUARTO_CHICO' : 'ALMACEN_GRAL';
 
     // Generamos las columnas dinámicas para las horas de 9 a 19
     const horas = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
     const selectHoras = horas.map(h => `
-      COUNT(DISTINCT CASE WHEN HOUR(p.${campoFechaFin}) = ${h} THEN p.id END) as ped_${h},
-      COUNT(CASE WHEN HOUR(p.${campoFechaFin}) = ${h} THEN dp.id END) as prod_${h}
+      COUNT(DISTINCT CASE WHEN HOUR(p.${campoFechaInicio}) = ${h} THEN p.id END) as ped_${h},
+      COUNT(CASE WHEN HOUR(p.${campoFechaInicio}) = ${h} THEN dp.id END) as prod_${h}
     `).join(',');
 
-    // Lógica SQL para calcular inactividad acumulada (Solo para 'dia', asumiendo inicio 9 AM)
-    // Fórmula: (Minutos transcurridos desde las 9 AM) - (Suma de minutos trabajados en pedidos)
-    const sqlInactividad = periodo === 'dia' 
-      ? `GREATEST(TIMESTAMPDIFF(MINUTE, CONCAT(CURDATE(), ' 09:00:00'), NOW()) - SUM(TIMESTAMPDIFF(MINUTE, p.${campoFechaInicio}, p.${campoFechaFin})), 0)`
-      : '0';
-
-     const query = `
+    // Lógica SQL para calcular inactividad (basado en la última vez que tomó un pedido)
+    // Se compara la hora actual contra la máxima fecha de inicio registrada para ese usuario
+    const query = `
       SELECT 
         u.id_almacenista,
         u.nombre,
@@ -74,21 +69,15 @@ export class MetricasService {
         -- Contamos partidas (filas de detalle)
         COUNT(dp.id) as productos_totales, 
         
-        ROUND(AVG(TIMESTAMPDIFF(MINUTE, p.${campoFechaInicio}, p.${campoFechaFin})), 1) as tiempo_promedio_min,
-        SUM(TIMESTAMPDIFF(MINUTE, p.${campoFechaInicio}, p.${campoFechaFin})) as tiempo_activo_total_min,
-        
-        -- Inactividad Acumulada (Calculada directamente en SQL)
-        ${sqlInactividad} as tiempo_muerto_min,
-
-        -- Inactividad Actual (Tiempo desde que soltó el último pedido hasta ahora)
-        TIMESTAMPDIFF(MINUTE, MAX(p.${campoFechaFin}), NOW()) as tiempo_sin_surtir_min,
+        -- Inactividad Actual (Tiempo desde que inició el último pedido hasta ahora)
+        TIMESTAMPDIFF(MINUTE, MAX(p.${campoFechaInicio}), NOW()) as tiempo_muerto_min,
         
         ${selectHoras}
       
       FROM pedidos p
       JOIN almacen_user u ON p.${campoUsuario} = u.id_almacenista
       JOIN detalle_pedidos dp ON p.id = dp.pedido_id
-      WHERE p.${campoFechaFin} >= ${fechaFiltro}
+      WHERE p.${campoFechaInicio} >= ${fechaFiltro}
         AND dp.zona_surtido = '${zonaEnum}'
       GROUP BY u.id_almacenista, u.nombre, u.img
       ORDER BY productos_totales DESC
@@ -159,5 +148,34 @@ ORDER BY minutos_inactivo DESC;
       ORDER BY fecha DESC
       LIMIT 7
     `);
+  }
+
+  // 4. Detalle de pedidos y partidas por hora
+  async getDetallePedidosPorHora(id: number, zona: 'CC' | 'AG', horaInicio: string, horaFinal: string) {
+    const campoUsuario = zona === 'CC' ? 'surtidor_cc_id' : 'surtidor_ag_id';
+    const campoFechaInicio = zona === 'CC' ? 'fecha_inicio_cc' : 'fecha_inicio_ag';
+    const lugarEstatico = zona === 'CC' ? 'cc' : 'al';
+    const zonaEnum = zona === 'CC' ? 'CUARTO_CHICO' : 'ALMACEN_GRAL';
+
+    return this.dataSource.query(`
+      SELECT 
+        DATE(p.${campoFechaInicio}) as fecha,
+        TIME(p.${campoFechaInicio}) as hora,
+        CAST(u.id_almacenista AS CHAR) as id_almacenista,
+        '${lugarEstatico}' as lugar,
+        u.nombre,
+        CAST(COUNT(dp.id) AS CHAR) as partidas,
+        p.folio_externo as pedido
+      FROM pedidos p
+      JOIN almacen_user u ON p.${campoUsuario} = u.id_almacenista
+      JOIN detalle_pedidos dp ON p.id = dp.pedido_id
+      WHERE p.${campoUsuario} = ?
+        AND DATE(p.${campoFechaInicio}) = CURDATE()
+        AND TIME(p.${campoFechaInicio}) >= ?
+        AND TIME(p.${campoFechaInicio}) <= ?
+        AND dp.zona_surtido = ?
+      GROUP BY p.id, u.id_almacenista, u.nombre, p.folio_externo, p.${campoFechaInicio}
+      ORDER BY p.${campoFechaInicio} ASC
+    `, [id, horaInicio, horaFinal, zonaEnum]);
   }
 }

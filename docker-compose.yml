@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  backend-almacen:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend-almacen
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3005
+      SSL_ENABLED: "false"
+      UPLOADS_ROOT: /app/uploads
+      GOOGLE_APPLICATION_CREDENTIALS: /app/secrets/firebase-service-account.json
+    ports:
+      - "3005:3005"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./ferreclientes-4f214-firebase-adminsdk-fbsvc-29f985f65a.json:/app/secrets/firebase-service-account.json:ro

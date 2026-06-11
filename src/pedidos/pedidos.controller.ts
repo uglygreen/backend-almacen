@@ -47,6 +47,12 @@ export class PedidosController {
     return this.pedidosService.getPedidosCompletadosHoy();
   }
 
+  @Get('completados/:id')
+  @ApiOperation({ summary: 'Obtener pedidos completados por almacenista' })
+  async getPedidosCompletadosByAlmacenista(@Param('id') id: number) {
+    return this.pedidosService.getPedidosCompletadosByAlmacenista(id);
+  }
+
   @Get('oficina')
   @ApiOperation({ summary: 'Obtener pedidos para recoger en oficina' })
   async getPedidosRecogeEnOficina() {
@@ -123,5 +129,11 @@ export class PedidosController {
     @Body('status') status: StatusEntrega
   ) {
     return this.pedidosService.actualizarStatusEntrega(id, status);
+  }
+
+  @Post('cleanup-duplicates')
+  @ApiOperation({ summary: 'Eliminar registros duplicados en detalle_pedidos' })
+  async cleanupDuplicates() {
+    return this.pedidosService.cleanupDuplicates();
   }
 }

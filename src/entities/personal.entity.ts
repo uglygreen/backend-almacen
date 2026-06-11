@@ -1,4 +1,5 @@
-import { Entity, Column, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { DesLegacy } from './des-legacy.entity';
 
 @Entity('PER') // Nombre exacto de la tabla en tu base de datos
 export class Personal {
@@ -295,4 +296,9 @@ export class Personal {
 
   @Column({ name: 'XCATEGORIA', type: 'char', length: 5, default: '' })
   xCategoria: string;
+
+  @OneToMany(() => DesLegacy, (detalle) => detalle.emisorDetalle, {
+    createForeignKeyConstraints: false,
+  })
+  detallesEmitidosDocumento: DesLegacy[];
 }

@@ -1,4 +1,7 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
+import { CorreoLegacy } from './correo-legacy.entity';
+import { DesLegacy } from './des-legacy.entity';
+import { DomLegacy } from './dom-legacy.entity';
 import { Personal } from './personal.entity';
 
 @Entity('CLI')
@@ -209,4 +212,46 @@ export class Cliente {
     referencedColumnName: 'perId' // La propiedad en la entidad Personal
   })
   vendedorDetalle: Personal;
+
+  @ManyToOne(() => Personal, {
+    createForeignKeyConstraints: false
+  })
+  @JoinColumn({
+    name: 'COBRADORID',
+    referencedColumnName: 'perId'
+  })
+  cobradorDetalle: Personal;
+
+  @ManyToOne(() => Personal, {
+    createForeignKeyConstraints: false
+  })
+  @JoinColumn({
+    name: 'EMISORID',
+    referencedColumnName: 'perId'
+  })
+  emisorDetalle: Personal;
+
+  @ManyToOne(() => DomLegacy, {
+    createForeignKeyConstraints: false
+  })
+  @JoinColumn({
+    name: 'DOMID',
+    referencedColumnName: 'domId'
+  })
+  domicilioPrincipal: DomLegacy;
+
+  @OneToMany(() => DomLegacy, (domicilio) => domicilio.cliente, {
+    createForeignKeyConstraints: false
+  })
+  domicilios: DomLegacy[];
+
+  @OneToMany(() => DesLegacy, (detalle) => detalle.cliente, {
+    createForeignKeyConstraints: false
+  })
+  detallesDocumento: DesLegacy[];
+
+  @OneToMany(() => CorreoLegacy, (correo) => correo.cliente, {
+    createForeignKeyConstraints: false
+  })
+  correos: CorreoLegacy[];
 }

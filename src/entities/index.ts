@@ -158,6 +158,9 @@ export class Pedido {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column({ name: 'cliente_id', nullable: true })
+  clienteId: number;
+
   @Column({ name: 'cliente_nombre' })
   clienteNombre: string;
 
@@ -204,13 +207,13 @@ export class Pedido {
   surtidorAg: AlmacenUser;
 
   // Timestamps
-  @Column({ name: 'fecha_inicio_cc', nullable: true })
+  @Column({ name: 'fecha_inicio_cc', type: 'datetime', nullable: true })
   fechaInicioCc: Date;
-  @Column({ name: 'fecha_fin_cc', nullable: true })
+  @Column({ name: 'fecha_fin_cc', type: 'datetime', nullable: true })
   fechaFinCc: Date;
-  @Column({ name: 'fecha_inicio_ag', nullable: true })
+  @Column({ name: 'fecha_inicio_ag', type: 'datetime', nullable: true })
   fechaInicioAg: Date;
-  @Column({ name: 'fecha_fin_ag', nullable: true })
+  @Column({ name: 'fecha_fin_ag', type: 'datetime', nullable: true })
   fechaFinAg: Date;
 
   @OneToMany(() => DetallePedido, (detalle) => detalle.pedido, { cascade: true })
@@ -277,5 +280,18 @@ export class Surtido {
 }
 
 export * from './cliente.entity';
+export * from './customer-notification.entity';
+export * from './device-token.entity';
+export * from './cliente-mobile-otp.entity';
+export * from './cliente-mobile-session.entity';
+export * from './cliente-credito-excepcion.entity';
+export * from './correo-legacy.entity';
+export * from './almacen-user-base-config.entity';
 export * from './config-almacen.entity';
+export * from './alm-legacy.entity';
+export * from './des-legacy.entity';
+export * from './doc-legacy.entity';
+export * from './dom-legacy.entity';
 export * from './garantia.entity';
+export * from './inv-legacy.entity';
+export * from './unidad-legacy.entity';

@@ -323,6 +323,9 @@ export class GarantiasService {
         D.TOTAL,
         I.CLVPROV AS CODIGO,
         I.DESCRIPCIO AS PRODUCTO,
+        I.XIMAGEN2 AS IMAGEN,
+        I.XXMARCA AS MARCA,
+        I.XMCA_IMAG AS IMAGEN_MARCA,
         DS.DESCANTIDAD AS CANTIDAD
       FROM DOC D
       JOIN DES DS ON D.DOCID = DS.DESDOCID

@@ -6,7 +6,7 @@ import { PedidosModule } from './pedidos/pedidos.module';
 import { SincronizacionModule } from './sincronizacion/sincronizacion.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AlmacenUser, ControlSincronizacion, DetallePedido, Pedido, Producto, ProductoCodigo, Surtido } from './entities';
+import { AlmLegacy, AlmacenUser, AlmacenUserBaseConfig, ClienteCreditoExcepcion, ClienteMobileOtp, ClienteMobileSession, ControlSincronizacion, CorreoLegacy, CustomerNotification, DesLegacy, DetallePedido, DeviceToken, DocLegacy, DomLegacy, InvLegacy, PagDocLegacy, Pedido, Producto, ProductoCodigo, Surtido, UnidadLegacy } from './entities';
 import { MetricasModule } from './metricas/metricas.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { InventarioModule } from './inventario/inventario.module';
@@ -20,6 +20,32 @@ import { Garantia, HistorialEstatusGarantia, MediaGarantia } from './entities/ga
 import { EventsModule } from './events/events.module';
 import { Personal } from './entities/personal.entity';
 import { PersonalModule } from './personal/personal.module';
+import { AsistenciaModule } from './asistencia/asistencia.module';
+import { IclockTransaction } from './asistencia/entities/iclock-transaction.entity';
+import { PersonnelEmployee } from './asistencia/entities/personnel-employee.entity';
+import { PersonnelPosition } from './asistencia/entities/personnel-position.entity';
+import { PersonnelDepartment } from './asistencia/entities/personnel-department.entity';
+
+import { AuthAlmacenModule } from './modules/auth-almacen/auth-almacen.module';
+import { UsersAlmacenModule } from './modules/users-almacen/users-almacen.module';
+import { OrdersAlmacenModule } from './modules/orders-almacen/orders-almacen.module';
+import { CapturaAlmacenModule } from './modules/captura-almacen/captura-almacen.module';
+import { DashboardAlmacenModule } from './modules/dashboard-almacen/dashboard-almacen.module';
+import { ReportsAlmacenModule } from './modules/reports-almacen/reports-almacen.module';
+import { RealtimeAlmacenModule } from './modules/realtime-almacen/realtime-almacen.module';
+import { AuditAlmacenModule } from './modules/audit-almacen/audit-almacen.module';
+import { AuditEvent } from './modules/audit-almacen/entities/audit-event.entity';
+import { HistoricalAlmacenModule } from './modules/historical-almacen/historical-almacen.module';
+import { ClientesCreditoModule } from './modules/clientes-credito/clientes-credito.module';
+import { ClientesMobileModule } from './modules/clientes-mobile/clientes-mobile.module';
+import { ClientesMobileOrdersModule } from './modules/clientes-mobile-orders/clientes-mobile-orders.module';
+import { ClientesMobileOrdersBackofficeModule } from './modules/clientes-mobile-orders-backoffice/clientes-mobile-orders-backoffice.module';
+import { ClienteMobileOrder } from './modules/clientes-mobile-orders/entities/cliente-mobile-order.entity';
+import { ClienteMobileOrderItem } from './modules/clientes-mobile-orders/entities/cliente-mobile-order-item.entity';
+import { PersonalBaseAlmacenModule } from './modules/personal-base-almacen/personal-base-almacen.module';
+import { ThermalLabelsAlmacenModule } from './modules/thermal-labels-almacen/thermal-labels-almacen.module';
+import { CustomerNotificationsModule } from './modules/customer-notifications/customer-notifications.module';
+import { envNumber, envString } from './config/runtime-env';
 
 @Module({
   imports: [
@@ -28,7 +54,7 @@ import { PersonalModule } from './personal/personal.module';
     
     // 1.5 Servir archivos estáticos
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'uploads'),
+      rootPath: envString('UPLOADS_ROOT', join(process.cwd(), 'uploads')),
       serveRoot: '/uploads', 
     }),
 
@@ -36,12 +62,12 @@ import { PersonalModule } from './personal/personal.module';
     TypeOrmModule.forRoot({
       name: 'default', // Nombre por defecto
       type: 'mysql',
-      host: '192.168.1.250',
-      port: 3306,
-      username: 'web',
-      password: 'webfmolvera17',
-      database: 'sistemas',
-      entities: [Pedido, DetallePedido, Producto, AlmacenUser, ControlSincronizacion, ProductoCodigo, Surtido, ConfigAlmacen, Garantia, HistorialEstatusGarantia, MediaGarantia],
+      host: envString('DB_HOST', '192.168.1.250'),
+      port: envNumber('DB_PORT', 3306),
+      username: envString('DB_USER', 'web'),
+      password: envString('DB_PASSWORD', 'webfmolvera17'),
+      database: envString('DB_NAME', 'sistemas'),
+      entities: [Pedido, DetallePedido, Producto, AlmacenUser, AlmacenUserBaseConfig, ControlSincronizacion, ProductoCodigo, Surtido, ConfigAlmacen, Garantia, HistorialEstatusGarantia, MediaGarantia, AuditEvent, ClienteCreditoExcepcion, ClienteMobileOtp, ClienteMobileSession, ClienteMobileOrder, ClienteMobileOrderItem, DeviceToken, CustomerNotification],
       synchronize: false, // ¡Cuidado en producción!
     }),
 
@@ -49,16 +75,44 @@ import { PersonalModule } from './personal/personal.module';
     TypeOrmModule.forRoot({
       name: 'legacy_db', // Nombre para inyectar después
       type: 'mysql', // O la base que sea DatosB (ej. mssql, oracle)
-      host: '192.168.1.250',
-      port: 3306,
-      username: 'web',
-      password: 'webfmolvera17',
-      database: 'datosb',
-      entities: [Cliente, Personal], // Registramos la entidad Cliente
+      host: envString('LEGACY_DB_HOST', envString('DB_HOST', '192.168.1.250')),
+      port: envNumber('LEGACY_DB_PORT', envNumber('DB_PORT', 3306)),
+      username: envString('LEGACY_DB_USER', envString('DB_USER', 'web')),
+      password: envString('LEGACY_DB_PASSWORD', envString('DB_PASSWORD', 'webfmolvera17')),
+      database: envString('LEGACY_DB_NAME', 'datosb'),
+      entities: [Cliente, Personal, DocLegacy, PagDocLegacy, DomLegacy, InvLegacy, DesLegacy, AlmLegacy, CorreoLegacy, UnidadLegacy],
       synchronize: false,
     }),
 
-    // 4. Módulos de Funcionalidad
+    // 4. Conexión ZKTeco (PostgreSQL) - Base Principal
+    TypeOrmModule.forRoot({
+      name: 'zkteco_db',
+      type: 'postgres',
+      host: envString('ZKTECO_DB_HOST', '192.168.1.87'),
+      port: envNumber('ZKTECO_DB_PORT', 7496),
+      username: envString('ZKTECO_DB_USER', 'postgres'),
+      password: envString('ZKTECO_DB_PASSWORD', 'l0p3r3s4'),
+      database: envString('ZKTECO_DB_NAME', 'biotime'),
+      entities: [IclockTransaction, PersonnelEmployee, PersonnelPosition, PersonnelDepartment],
+      synchronize: false, // La base de datos ya existe, no sincronizar
+    }),
+
+    // 4.1 Conexión ZKTeco (PostgreSQL) - Sucursal Tequisquiapan (IP Dinámica)
+    // NOTA: Esta conexión inicial no intenta conectarse inmediatamente gracias a retryAttempts: 0
+    // El host real se obtiene dinámicamente en AsistenciaService
+    TypeOrmModule.forRoot({
+      name: 'zkteco_tequis_db',
+      type: 'postgres',
+      host: envString('ZKTECO_TEQUIS_DB_HOST', '187.145.15.146'),
+      port: envNumber('ZKTECO_TEQUIS_DB_PORT', 7496),
+      username: envString('ZKTECO_TEQUIS_DB_USER', 'postgres'),
+      password: envString('ZKTECO_TEQUIS_DB_PASSWORD', 'FmoQro2025@'),
+      database: envString('ZKTECO_TEQUIS_DB_NAME', 'biotime'),
+      entities: [IclockTransaction, PersonnelEmployee, PersonnelPosition, PersonnelDepartment],
+      synchronize: false,
+    }),
+
+    // 5. Módulos de Funcionalidad
     PedidosModule,
     SincronizacionModule,
     MetricasModule,
@@ -69,6 +123,23 @@ import { PersonalModule } from './personal/personal.module';
     ConfigAlmacenModule,
     GarantiasModule,
     EventsModule,
+    AsistenciaModule,
+    AuthAlmacenModule,
+    UsersAlmacenModule,
+    OrdersAlmacenModule,
+    CapturaAlmacenModule,
+    DashboardAlmacenModule,
+    ReportsAlmacenModule,
+    RealtimeAlmacenModule,
+    AuditAlmacenModule,
+    HistoricalAlmacenModule,
+    ClientesCreditoModule,
+    ClientesMobileModule,
+    ClientesMobileOrdersModule,
+    ClientesMobileOrdersBackofficeModule,
+    PersonalBaseAlmacenModule,
+    ThermalLabelsAlmacenModule,
+    CustomerNotificationsModule,
   ],
   controllers: [ ],
   providers: [],

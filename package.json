@@ -1,6 +1,7 @@
 {
   "name": "backend-almacen",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "bin": "dist/main.js",
   "description": "",
   "author": "",
   "private": true,
@@ -19,9 +20,15 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
+  "pkg": {
+    "assets": [
+      "node_modules/fontkit/**/*"
+    ]
+  },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
+    "@nestjs/jwt": "^11.0.2",
     "@nestjs/mapped-types": "*",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/platform-socket.io": "^11.1.9",
@@ -34,8 +41,15 @@
     "bwip-js": "^4.8.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
+    "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
+    "firebase-admin": "^13.10.0",
+    "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.15.3",
+    "nodemailer": "^8.0.7",
+    "pdf-lib": "^1.17.1",
     "pdfkit": "^0.17.2",
+    "pg": "^8.20.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
@@ -53,6 +67,7 @@
     "@types/multer": "^2.0.0",
     "@types/node": "^22.10.7",
     "@types/supertest": "^6.0.2",
+    "@vercel/ncc": "^0.38.4",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
