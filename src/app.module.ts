@@ -47,6 +47,15 @@ import { ThermalLabelsAlmacenModule } from './modules/thermal-labels-almacen/the
 import { CustomerNotificationsModule } from './modules/customer-notifications/customer-notifications.module';
 import { envNumber, envString } from './config/runtime-env';
 
+function requiredEnv(key: string) {
+  const value = envString(key).trim();
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+
+  return value;
+}
+
 @Module({
   imports: [
     // 1. Activar Cron Jobs
@@ -62,11 +71,11 @@ import { envNumber, envString } from './config/runtime-env';
     TypeOrmModule.forRoot({
       name: 'default', // Nombre por defecto
       type: 'mysql',
-      host: envString('DB_HOST', '192.168.1.250'),
+      host: requiredEnv('DB_HOST'),
       port: envNumber('DB_PORT', 3306),
-      username: envString('DB_USER', 'web'),
-      password: envString('DB_PASSWORD', 'webfmolvera17'),
-      database: envString('DB_NAME', 'sistemas'),
+      username: requiredEnv('DB_USER'),
+      password: requiredEnv('DB_PASSWORD'),
+      database: requiredEnv('DB_NAME'),
       entities: [Pedido, DetallePedido, Producto, AlmacenUser, AlmacenUserBaseConfig, ControlSincronizacion, ProductoCodigo, Surtido, ConfigAlmacen, Garantia, HistorialEstatusGarantia, MediaGarantia, AuditEvent, ClienteCreditoExcepcion, ClienteMobileOtp, ClienteMobileSession, ClienteMobileOrder, ClienteMobileOrderItem, DeviceToken, CustomerNotification],
       synchronize: false, // ¡Cuidado en producción!
     }),
@@ -75,11 +84,11 @@ import { envNumber, envString } from './config/runtime-env';
     TypeOrmModule.forRoot({
       name: 'legacy_db', // Nombre para inyectar después
       type: 'mysql', // O la base que sea DatosB (ej. mssql, oracle)
-      host: envString('LEGACY_DB_HOST', envString('DB_HOST', '192.168.1.250')),
+      host: envString('LEGACY_DB_HOST', requiredEnv('DB_HOST')),
       port: envNumber('LEGACY_DB_PORT', envNumber('DB_PORT', 3306)),
-      username: envString('LEGACY_DB_USER', envString('DB_USER', 'web')),
-      password: envString('LEGACY_DB_PASSWORD', envString('DB_PASSWORD', 'webfmolvera17')),
-      database: envString('LEGACY_DB_NAME', 'datosb'),
+      username: envString('LEGACY_DB_USER', requiredEnv('DB_USER')),
+      password: envString('LEGACY_DB_PASSWORD', requiredEnv('DB_PASSWORD')),
+      database: requiredEnv('LEGACY_DB_NAME'),
       entities: [Cliente, Personal, DocLegacy, PagDocLegacy, DomLegacy, InvLegacy, DesLegacy, AlmLegacy, CorreoLegacy, UnidadLegacy],
       synchronize: false,
     }),
@@ -88,11 +97,11 @@ import { envNumber, envString } from './config/runtime-env';
     TypeOrmModule.forRoot({
       name: 'zkteco_db',
       type: 'postgres',
-      host: envString('ZKTECO_DB_HOST', '192.168.1.87'),
+      host: requiredEnv('ZKTECO_DB_HOST'),
       port: envNumber('ZKTECO_DB_PORT', 7496),
-      username: envString('ZKTECO_DB_USER', 'postgres'),
-      password: envString('ZKTECO_DB_PASSWORD', 'l0p3r3s4'),
-      database: envString('ZKTECO_DB_NAME', 'biotime'),
+      username: requiredEnv('ZKTECO_DB_USER'),
+      password: requiredEnv('ZKTECO_DB_PASSWORD'),
+      database: requiredEnv('ZKTECO_DB_NAME'),
       entities: [IclockTransaction, PersonnelEmployee, PersonnelPosition, PersonnelDepartment],
       synchronize: false, // La base de datos ya existe, no sincronizar
     }),
@@ -103,11 +112,11 @@ import { envNumber, envString } from './config/runtime-env';
     TypeOrmModule.forRoot({
       name: 'zkteco_tequis_db',
       type: 'postgres',
-      host: envString('ZKTECO_TEQUIS_DB_HOST', '187.145.15.146'),
+      host: requiredEnv('ZKTECO_TEQUIS_DB_HOST'),
       port: envNumber('ZKTECO_TEQUIS_DB_PORT', 7496),
-      username: envString('ZKTECO_TEQUIS_DB_USER', 'postgres'),
-      password: envString('ZKTECO_TEQUIS_DB_PASSWORD', 'FmoQro2025@'),
-      database: envString('ZKTECO_TEQUIS_DB_NAME', 'biotime'),
+      username: requiredEnv('ZKTECO_TEQUIS_DB_USER'),
+      password: requiredEnv('ZKTECO_TEQUIS_DB_PASSWORD'),
+      database: requiredEnv('ZKTECO_TEQUIS_DB_NAME'),
       entities: [IclockTransaction, PersonnelEmployee, PersonnelPosition, PersonnelDepartment],
       synchronize: false,
     }),
