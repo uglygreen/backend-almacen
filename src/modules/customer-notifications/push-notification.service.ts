@@ -34,6 +34,7 @@ export class PushNotificationService {
   private readonly logger = new Logger(PushNotificationService.name);
   private readonly defaultCredentialsFile = 'ferreclientes-4f214-firebase-adminsdk-fbsvc-29f985f65a.json';
   private readonly firebaseAppName = 'backend-almacen-push';
+  private readonly defaultNotificationImageUrl = 'https://ferremayoristas.com.mx/assets/logo.png';
 
   async sendToDevices(input: PushSendInput): Promise<PushSendResult> {
     const uniqueTokens = this.getUniqueActiveTokens(input.tokens);
@@ -48,20 +49,26 @@ export class PushNotificationService {
     }
 
     const messaging = this.getMessaging();
+    const imageUrl = this.getNotificationImageUrl();
     const response = await messaging.sendEachForMulticast({
       tokens: uniqueTokens.map((token) => token.fcmToken),
       notification: {
         title: input.title,
         body: input.body,
+        imageUrl,
       },
       data: this.normalizeData({
         customerId: input.customerId,
         notificationId: input.notificationId,
         type: input.type,
+        imageUrl,
         ...input.data,
       }),
       android: {
         priority: 'high',
+        notification: {
+          imageUrl,
+        },
       },
       apns: {
         headers: {
@@ -70,7 +77,11 @@ export class PushNotificationService {
         payload: {
           aps: {
             sound: 'default',
+            'mutable-content': 1,
           },
+        },
+        fcmOptions: {
+          imageUrl,
         },
       },
     });
@@ -214,6 +225,10 @@ export class PushNotificationService {
     const projectRootFromModule = path.resolve(__dirname, '../../../');
 
     return [...new Set([cwd, execDir, projectRootFromModule])];
+  }
+
+  private getNotificationImageUrl() {
+    return envString('PUSH_NOTIFICATION_IMAGE_URL', this.defaultNotificationImageUrl).trim();
   }
 
   private getUniqueActiveTokens(tokens: DeviceToken[]) {

@@ -103,6 +103,22 @@ Por defecto el backend queda en `http://localhost:3005` y el JSON de Firebase se
 
 Consulta la guia completa en [docs/docker-deployment.md](file:///c:/Proyectos/ferremayoristas/backend/almacen/backend-almacen/docs/docker-deployment.md).
 
+### Scripts de despliegue sin Compose
+
+Tambien se incluyen dos scripts Bash en `scripts/` para servidores donde estas usando `docker build` + `docker run` directamente:
+
+- `scripts/deploy-simple.sh`: reconstruye la imagen `latest`, reemplaza el contenedor y lo vuelve a levantar.
+- `scripts/deploy-versioned.sh`: despliega una imagen con tag versionado y permite rollback rapido a la imagen anterior.
+
+Uso:
+
+```bash
+chmod +x scripts/*.sh
+./scripts/deploy-simple.sh
+./scripts/deploy-versioned.sh deploy
+./scripts/deploy-versioned.sh rollback
+```
+
 ## 🛠 Configuración Local
 
 1. Instalar dependencias:
