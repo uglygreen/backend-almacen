@@ -3,7 +3,8 @@
 /node_modules
 /build
 /uploads/*
-
+/sql/*
+/docs/*
 # Logs
 logs
 *.log
@@ -46,8 +47,7 @@ lerna-debug.log*
 
 ferreclientes-4f214-firebase-adminsdk-fbsvc-29f985f65a.json
 backend-almacen
-/sql/*
-/docs/*
+
 # temp directory
 .temp
 .tmp
