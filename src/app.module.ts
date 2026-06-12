@@ -103,7 +103,7 @@ import { envNumber, envString } from './config/runtime-env';
     TypeOrmModule.forRoot({
       name: 'zkteco_tequis_db',
       type: 'postgres',
-      host: envString('ZKTECO_TEQUIS_DB_HOST', '187.145.0.123'),
+      host: envString('ZKTECO_TEQUIS_DB_HOST', '187.145.15.146'),
       port: envNumber('ZKTECO_TEQUIS_DB_PORT', 7496),
       username: envString('ZKTECO_TEQUIS_DB_USER', 'postgres'),
       password: envString('ZKTECO_TEQUIS_DB_PASSWORD', 'FmoQro2025@'),
