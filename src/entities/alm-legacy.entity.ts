@@ -1,5 +1,6 @@
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { InvLegacy } from './inv-legacy.entity';
+import { NomAlmLegacy } from './nomalm-legacy.entity';
 
 @Entity('ALM')
 export class AlmLegacy {
@@ -68,4 +69,10 @@ export class AlmLegacy {
   })
   @JoinColumn({ name: 'ARTICULOID', referencedColumnName: 'articuloId' })
   articulo: InvLegacy;
+
+  @ManyToOne(() => NomAlmLegacy, (nomAlmacen) => nomAlmacen.existencias, {
+    createForeignKeyConstraints: false,
+  })
+  @JoinColumn({ name: 'ALMACEN', referencedColumnName: 'almacen' })
+  nomAlmacenRef: NomAlmLegacy;
 }

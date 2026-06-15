@@ -6,7 +6,7 @@ import { PedidosModule } from './pedidos/pedidos.module';
 import { SincronizacionModule } from './sincronizacion/sincronizacion.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AlmLegacy, AlmacenUser, AlmacenUserBaseConfig, ClienteCreditoExcepcion, ClienteMobileOtp, ClienteMobileSession, ControlSincronizacion, CorreoLegacy, CustomerNotification, DesLegacy, DetallePedido, DeviceToken, DocLegacy, DomLegacy, InvLegacy, PagDocLegacy, Pedido, Producto, ProductoCodigo, Surtido, UnidadLegacy } from './entities';
+import { AlmLegacy, AlmacenUser, AlmacenUserBaseConfig, ClienteCreditoExcepcion, ClienteMobileOtp, ClienteMobileSession, ControlSincronizacion, CorreoLegacy, CustomerNotification, DesLegacy, DetallePedido, DeviceToken, DocLegacy, DomLegacy, InvLegacy, NomAlmLegacy, PagDocLegacy, Pedido, Producto, ProductoCodigo, Surtido, UnidadLegacy } from './entities';
 import { MetricasModule } from './metricas/metricas.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { InventarioModule } from './inventario/inventario.module';
@@ -89,7 +89,7 @@ function requiredEnv(key: string) {
       username: envString('LEGACY_DB_USER', requiredEnv('DB_USER')),
       password: envString('LEGACY_DB_PASSWORD', requiredEnv('DB_PASSWORD')),
       database: requiredEnv('LEGACY_DB_NAME'),
-      entities: [Cliente, Personal, DocLegacy, PagDocLegacy, DomLegacy, InvLegacy, DesLegacy, AlmLegacy, CorreoLegacy, UnidadLegacy],
+      entities: [Cliente, Personal, DocLegacy, PagDocLegacy, DomLegacy, InvLegacy, DesLegacy, AlmLegacy, NomAlmLegacy, CorreoLegacy, UnidadLegacy],
       synchronize: false,
     }),
 

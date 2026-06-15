@@ -750,7 +750,40 @@ export class ClientesMobileService {
       throw new NotFoundException(`No se encontró el producto ${articuloId}`);
     }
 
-    return item;
+    const existenciasRows = await this.legacyDataSource.query(
+      `
+        SELECT
+          alm.ALMACEN AS almacen,
+          TRIM(nom.NOMALMACEN) AS nombreAlmacen,
+          IFNULL(alm.EXISTENCIA, 0) AS existencia
+        FROM datosb.ALM alm
+        INNER JOIN datosb.NOMALM nom
+          ON alm.ALMACEN = nom.ALMACEN
+        WHERE alm.ARTICULOID = ?
+        ORDER BY alm.ALMACEN ASC
+      `,
+      [articuloId],
+    );
+
+    const unidadesRows = await this.legacyDataSource.query(
+      `
+        SELECT
+          uni.UNIDADID AS unidadId,
+          TRIM(uni.UNIDAD) AS unidad,
+          IFNULL(uni.UEQUIVALE, 0) AS equivale
+        FROM datosb.UNIDADES uni
+        WHERE uni.ARTICULOID = ?
+          AND uni.NUNIDAD == 0
+        ORDER BY uni.UEQUIVALE ASC, uni.UNIDADID ASC
+      `,
+      [articuloId],
+    );
+
+    return {
+      ...item,
+      existencias: this.mapExistenciasRows(existenciasRows),
+      unidades: this.mapUnidadesRows(unidadesRows),
+    };
   }
 
   @Cron(CronExpression.EVERY_HOUR)
@@ -1061,6 +1094,22 @@ export class ClientesMobileService {
         precioConDescuento,
       };
     });
+  }
+
+  private mapExistenciasRows(rows: any[]) {
+    return rows.map((item) => ({
+      almacen: this.toNumber(item.almacen),
+      nombreAlmacen: this.cleanNullableString(item.nombreAlmacen),
+      existencia: this.toNumber(item.existencia)
+    }));
+  }
+
+  private mapUnidadesRows(rows: any[]) {
+    return rows.map((item) => ({
+      unidadId: this.toNumber(item.unidadId),
+      unidad: this.cleanNullableString(item.unidad),
+      equivale: this.toNumber(item.equivale),
+    }));
   }
 
   private cleanNullableString(value: string | null | undefined): string | null {
