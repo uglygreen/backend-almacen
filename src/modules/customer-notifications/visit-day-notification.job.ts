@@ -87,20 +87,21 @@ export class VisitDayNotificationJob {
   }
 
   private matchesVisitDay(rawVisitDay: string | null | undefined, currentDate: Date) {
-    const normalized = this.normalizeDay(rawVisitDay);
-    if (!normalized) {
+    const currentDayCode = this.dayCodeFromDate(currentDate);
+    if (!currentDayCode) {
       return false;
     }
 
-    return normalized === this.normalizeDay(this.dayNameFromDate(currentDate));
+    const configuredCodes = this.extractVisitDayCodes(rawVisitDay);
+    return configuredCodes.includes(currentDayCode);
   }
 
-  private dayNameFromDate(date: Date) {
-    const names = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
-    return names[date.getDay()] ?? '';
+  private dayCodeFromDate(date: Date) {
+    const codes = [ 'L', 'M', 'I', 'J', 'V'];
+    return codes[date.getDay()] ?? '';
   }
 
-  private normalizeDay(value: string | null | undefined) {
+  private extractVisitDayCodes(value: string | null | undefined) {
     const normalized = (value ?? '')
       .trim()
       .toLowerCase()
@@ -108,36 +109,42 @@ export class VisitDayNotificationJob {
       .replace(/[\u0300-\u036f]/g, '');
 
     if (!normalized) {
-      return '';
+      return [];
     }
 
-    const aliases: Record<string, string> = {
-      lun: 'lunes',
-      lunes: 'lunes',
-      mon: 'lunes',
-      mar: 'martes',
-      martes: 'martes',
-      tue: 'martes',
-      mie: 'miercoles',
-      miercoles: 'miercoles',
-      mié: 'miercoles',
-      wed: 'miercoles',
-      jue: 'jueves',
-      jueves: 'jueves',
-      thu: 'jueves',
-      vie: 'viernes',
-      viernes: 'viernes',
-      fri: 'viernes',
-      sab: 'sabado',
-      sabado: 'sabado',
-      sáb: 'sabado',
-      saturday: 'sabado',
-      dom: 'domingo',
-      domingo: 'domingo',
-      sun: 'domingo',
+    const aliases: Record<string, string[]> = {
+      l: ['L'],
+      lun: ['L'],
+      lunes: ['L'],
+      mon: ['L'],
+      m: ['M'],
+      mar: ['M'],
+      martes: ['M'],
+      tue: ['M'],
+      i: ['I'],
+      mie: ['I'],
+      miercoles: ['I'],
+      wed: ['I'],
+      j: ['J'],
+      jue: ['J'],
+      jueves: ['J'],
+      thu: ['J'],
+      v: ['V'],
+      vie: ['V'],
+      viernes: ['V'],
+      fri: ['V'],
     };
 
-    return aliases[normalized] ?? normalized;
+    if (aliases[normalized]) {
+      return aliases[normalized];
+    }
+
+    const compactCodes = normalized
+      .toUpperCase()
+      .replace(/[^LMIJV]/g, '')
+      .split('');
+
+    return [...new Set(compactCodes)];
   }
 
   private isClientActive(value: string | null | undefined) {
