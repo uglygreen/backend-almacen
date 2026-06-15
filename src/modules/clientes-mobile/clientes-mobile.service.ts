@@ -773,7 +773,7 @@ export class ClientesMobileService {
           IFNULL(uni.UEQUIVALE, 0) AS equivale
         FROM datosb.UNIDADES uni
         WHERE uni.ARTICULOID = ?
-          AND uni.NUNIDAD == 0
+          AND uni.NUNIDAD = 0
         ORDER BY uni.UEQUIVALE ASC, uni.UNIDADID ASC
       `,
       [articuloId],
