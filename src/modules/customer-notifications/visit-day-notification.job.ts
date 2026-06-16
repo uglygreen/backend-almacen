@@ -97,7 +97,7 @@ export class VisitDayNotificationJob {
   }
 
   private dayCodeFromDate(date: Date) {
-    const codes = [ 'L', 'M', 'I', 'J', 'V'];
+    const codes = ['D', 'L', 'M', 'I', 'J', 'V', 'S'];
     return codes[date.getDay()] ?? '';
   }
 
