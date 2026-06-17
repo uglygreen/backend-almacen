@@ -18,6 +18,8 @@ if (!(global as any).crypto) {
 async function bootstrap() {
   loadRuntimeEnv();
   process.env.TZ = envString('APP_TIMEZONE', process.env.TZ || 'Etc/GMT+6');
+  const nodeEnv = envString('NODE_ENV', 'development');
+  const swaggerEnabled = envBoolean('SWAGGER_ENABLED', nodeEnv !== 'production');
   const { AppModule } = require('./app.module');
 
   // Asegurar que existe el directorio de uploads
@@ -71,23 +73,34 @@ async function bootstrap() {
   }));
 
   // 3. Configurar Swagger (Documentación Automática)
-  const config = new DocumentBuilder()
-    .setTitle('API Ferremayoristas')
-    .setDescription('Sistema de gestión de almacén, pedidos y métricas')
-    .setVersion('1.0')
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document, {
-    useGlobalPrefix: true,
-    // Fix para pkg/ncc: Cargar assets desde CDN porque no se empaquetan los estáticos
-    customCssUrl: 'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css',
-    customJs: [
-      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.js',
-      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.js',
-    ],
-  });
+  if (swaggerEnabled) {
+    console.log('Iniciando generación de Swagger...');
+    const config = new DocumentBuilder()
+      .setTitle('API Ferremayoristas')
+      .setDescription('Sistema de gestión de almacén, pedidos y métricas')
+      .setVersion('1.0')
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('docs', app, document, {
+      useGlobalPrefix: true,
+      // Fix para pkg/ncc: Cargar assets desde CDN porque no se empaquetan los estáticos
+      customCssUrl: 'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css',
+      customJs: [
+        'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.js',
+      ],
+    });
+    console.log('Swagger configurado correctamente en /api/docs');
+  } else {
+    console.log('Swagger deshabilitado para este entorno.');
+  }
 
+  console.log(`Iniciando servidor HTTP${httpsOptions ? 'S' : ''} en el puerto ${envString('PORT', '3005')}...`);
   const server = await app.listen(envString('PORT', '3005'), '0.0.0.0');
   server.setTimeout(600000); // 10 minutos
+  console.log(`Servidor iniciado correctamente en el puerto ${envString('PORT', '3005')}.`);
 }
-bootstrap();
+bootstrap().catch((error) => {
+  console.error('Error fatal al iniciar el backend:', error);
+  process.exit(1);
+});
