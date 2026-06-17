@@ -107,8 +107,8 @@ function requiredEnv(key: string) {
     }),
 
     // 4.1 Conexión ZKTeco (PostgreSQL) - Sucursal Tequisquiapan (IP Dinámica)
-    // NOTA: Esta conexión inicial no intenta conectarse inmediatamente gracias a retryAttempts: 0
-    // El host real se obtiene dinámicamente en AsistenciaService
+    // Se registra para poder inyectar repositorios, pero no se inicializa al arrancar.
+    // El host real se obtiene dinámicamente en AsistenciaService cuando se consulta Tequisquiapan.
     TypeOrmModule.forRoot({
       name: 'zkteco_tequis_db',
       type: 'postgres',
@@ -119,6 +119,8 @@ function requiredEnv(key: string) {
       database: requiredEnv('ZKTECO_TEQUIS_DB_NAME'),
       entities: [IclockTransaction, PersonnelEmployee, PersonnelPosition, PersonnelDepartment],
       synchronize: false,
+      retryAttempts: 0,
+      manualInitialization: true,
     }),
 
     // 5. Módulos de Funcionalidad
