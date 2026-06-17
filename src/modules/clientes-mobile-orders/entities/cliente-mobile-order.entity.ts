@@ -11,6 +11,11 @@ import { ClienteMobileOrderItem } from './cliente-mobile-order-item.entity';
 export enum ClienteMobileOrderStatus {
   DRAFT = 'DRAFT',
   SUBMITTED = 'SUBMITTED',
+  ACCEPTED = 'ACCEPTED',
+  PACKING = 'PACKING',
+  READY_TO_SHIP = 'READY_TO_SHIP',
+  IN_ROUTE = 'IN_ROUTE',
+  DELIVERED = 'DELIVERED',
   CANCELLED = 'CANCELLED',
 }
 

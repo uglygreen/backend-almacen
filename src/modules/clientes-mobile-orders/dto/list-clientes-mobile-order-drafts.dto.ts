@@ -9,8 +9,11 @@ export class ListClientesMobileOrdersDto {
   @Length(1, 20)
   customer?: string;
 
-  @ApiPropertyOptional({ enum: [ClienteMobileOrderStatus.DRAFT, ClienteMobileOrderStatus.SUBMITTED], example: ClienteMobileOrderStatus.DRAFT })
+  @ApiPropertyOptional({
+    enum: Object.values(ClienteMobileOrderStatus),
+    example: ClienteMobileOrderStatus.DRAFT,
+  })
   @IsOptional()
-  @IsEnum([ClienteMobileOrderStatus.DRAFT, ClienteMobileOrderStatus.SUBMITTED])
-  status?: ClienteMobileOrderStatus.DRAFT | ClienteMobileOrderStatus.SUBMITTED;
+  @IsEnum(ClienteMobileOrderStatus)
+  status?: ClienteMobileOrderStatus;
 }

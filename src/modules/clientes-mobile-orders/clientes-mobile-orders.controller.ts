@@ -32,7 +32,7 @@ export class ClientesMobileOrdersController {
   @Get('orders')
   @ApiOperation({ summary: 'Lista los pedidos del cliente autenticado por estatus' })
   @ApiQuery({ name: 'customer', required: false, type: String, example: '07810' })
-  @ApiQuery({ name: 'status', required: false, enum: [ClienteMobileOrderStatus.DRAFT, ClienteMobileOrderStatus.SUBMITTED] })
+  @ApiQuery({ name: 'status', required: false, enum: Object.values(ClienteMobileOrderStatus) })
   listOrders(@Req() req: any, @Query() query: ListClientesMobileOrdersDto) {
     return this.clientesMobileOrdersService.listOrders(
       req.user.sub,
