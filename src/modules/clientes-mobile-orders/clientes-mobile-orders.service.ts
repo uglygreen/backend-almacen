@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, Not, Repository } from 'typeorm';
 import { Cliente } from '../../entities';
 import { DomLegacy } from '../../entities/dom-legacy.entity';
 import { envString } from '../../config/runtime-env';
@@ -105,6 +105,34 @@ export class ClientesMobileOrdersService {
     if (status === ClienteMobileOrderStatus.DRAFT) {
       await this.refreshDraftOrdersPricing(orders);
     }
+
+    return {
+      items: orders.map((order) => this.mapOrder(order)),
+    };
+  }
+
+  async listTimelineOrders(
+    clienteId: number,
+    numeroCliente: string,
+    query: Pick<ListClientesMobileOrdersDto, 'customer'>,
+  ) {
+    const requestedCustomer = this.normalizeNumeroCliente(query.customer);
+    if (requestedCustomer && requestedCustomer !== this.normalizeNumeroCliente(numeroCliente)) {
+      throw new ForbiddenException('Solo puedes consultar los pedidos de tu cuenta');
+    }
+
+    const orders = await this.ordersRepository.find({
+      where: {
+        clienteId,
+        status: Not(ClienteMobileOrderStatus.DRAFT),
+      },
+      relations: ['items'],
+      order: {
+        submittedAt: 'DESC',
+        updatedAt: 'DESC',
+        id: 'DESC',
+      },
+    });
 
     return {
       items: orders.map((order) => this.mapOrder(order)),

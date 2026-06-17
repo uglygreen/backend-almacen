@@ -55,6 +55,17 @@ export class ClientesMobileOrdersController {
     );
   }
 
+  @Get('orders/timeline')
+  @ApiOperation({ summary: 'Lista los pedidos del cliente autenticado excluyendo drafts para timeline' })
+  @ApiQuery({ name: 'customer', required: false, type: String, example: '07810' })
+  listTimeline(@Req() req: any, @Query() query: ListClientesMobileOrdersDto) {
+    return this.clientesMobileOrdersService.listTimelineOrders(
+      req.user.sub,
+      req.user.numeroCliente,
+      query,
+    );
+  }
+
   @Post('orders/drafts')
   @ApiOperation({ summary: 'Crea un draft de pedido para el cliente autenticado' })
   createDraft(@Req() req: any, @Body() body: CreateClientesMobileOrderDraftDto) {
