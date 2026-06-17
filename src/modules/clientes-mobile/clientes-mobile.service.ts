@@ -4,7 +4,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { createHash, randomBytes, randomInt } from 'crypto';
 import { DataSource, Repository } from 'typeorm';
-import { Cliente, ClienteMobileOtp, ClienteMobileSession, CorreoLegacy, DocLegacy } from '../../entities';
+import { Cliente, ClienteMobileOtp, ClienteMobileSession, CorreoLegacy, DocLegacy, Personal } from '../../entities';
 import { envString } from '../../config/runtime-env';
 import { ListDiscountedProductsClienteMobileDto } from './dto/list-discounted-products-cliente-mobile.dto';
 import { LoginClienteMobileDto } from './dto/login-cliente-mobile.dto';
@@ -68,6 +68,8 @@ export class ClientesMobileService {
   constructor(
     @InjectRepository(Cliente, 'legacy_db')
     private readonly clientesRepository: Repository<Cliente>,
+    @InjectRepository(Personal, 'legacy_db')
+    private readonly personalRepository: Repository<Personal>,
     @InjectRepository(CorreoLegacy, 'legacy_db')
     private readonly correosRepository: Repository<CorreoLegacy>,
     @InjectRepository(DocLegacy, 'legacy_db')
@@ -333,14 +335,14 @@ export class ClientesMobileService {
 
     return {
       valid: true,
-      customer: this.mapClienteSession(cliente),
+      customer: await this.mapClienteSession(cliente),
     };
   }
 
   async me(clienteId: number) {
     const cliente = await this.findClienteById(clienteId);
     return {
-      customer: this.mapClienteSession(cliente),
+      customer: await this.mapClienteSession(cliente),
     };
   }
 
@@ -816,7 +818,7 @@ export class ClientesMobileService {
     existingSession?: ClienteMobileSession,
     device?: { deviceName?: string; deviceId?: string },
   ) {
-    const sessionCustomer = this.mapClienteSession(cliente, correo);
+    const sessionCustomer = await this.mapClienteSession(cliente, correo);
     const now = new Date();
     const sessionExpiresAt = new Date(now.getTime() + this.refreshExpiresInSeconds * 1000);
     const requestMeta = this.extractRequestMeta(request);
@@ -1039,7 +1041,9 @@ export class ClientesMobileService {
     };
   }
 
-  private mapClienteSession(cliente: Cliente, correo?: string) {
+  private async mapClienteSession(cliente: Cliente, correo?: string) {
+    const asesor = await this.resolveAsesor(cliente.vendedorId);
+
     return {
       id: cliente.clienteId,
       numeroCliente: cliente.numero,
@@ -1047,6 +1051,35 @@ export class ClientesMobileService {
       activo: this.isClienteActivo(cliente.activo),
       correo: correo ?? null,
       diaVis: this.cleanNullableString(cliente.diaVis),
+      asesor,
+    };
+  }
+
+  private async resolveAsesor(vendedorId: number | null | undefined) {
+    const asesorId = Number(vendedorId);
+    if (!Number.isFinite(asesorId) || asesorId <= 0) {
+      return null;
+    }
+
+    const asesor = await this.personalRepository.findOne({
+      where: { perId: asesorId },
+      select: {
+        perId: true,
+        nombre: true,
+        ceUsuario: true,
+        tel1: true,
+      },
+    });
+
+    if (!asesor) {
+      return null;
+    }
+
+    return {
+      id: asesor.perId,
+      nombre: this.cleanNullableString(asesor.nombre),
+      correo: this.cleanNullableString(asesor.ceUsuario),
+      telefono: this.cleanNullableString(asesor.tel1),
     };
   }
 
