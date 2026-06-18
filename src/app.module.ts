@@ -119,8 +119,6 @@ function requiredEnv(key: string) {
       database: requiredEnv('ZKTECO_TEQUIS_DB_NAME'),
       entities: [IclockTransaction, PersonnelEmployee, PersonnelPosition, PersonnelDepartment],
       synchronize: false,
-      retryAttempts: 0,
-      manualInitialization: true,
     }),
 
     // 5. Módulos de Funcionalidad
