@@ -42,6 +42,7 @@ import { ClientesMobileOrdersModule } from './modules/clientes-mobile-orders/cli
 import { ClientesMobileOrdersBackofficeModule } from './modules/clientes-mobile-orders-backoffice/clientes-mobile-orders-backoffice.module';
 import { ClienteMobileOrder } from './modules/clientes-mobile-orders/entities/cliente-mobile-order.entity';
 import { ClienteMobileOrderItem } from './modules/clientes-mobile-orders/entities/cliente-mobile-order-item.entity';
+import { ClienteMobileOrderStatusHistory } from './modules/clientes-mobile-orders/entities/cliente-mobile-order-status-history.entity';
 import { PersonalBaseAlmacenModule } from './modules/personal-base-almacen/personal-base-almacen.module';
 import { ThermalLabelsAlmacenModule } from './modules/thermal-labels-almacen/thermal-labels-almacen.module';
 import { CustomerNotificationsModule } from './modules/customer-notifications/customer-notifications.module';
@@ -76,7 +77,7 @@ function requiredEnv(key: string) {
       username: requiredEnv('DB_USER'),
       password: requiredEnv('DB_PASSWORD'),
       database: requiredEnv('DB_NAME'),
-      entities: [Pedido, DetallePedido, Producto, AlmacenUser, AlmacenUserBaseConfig, ControlSincronizacion, ProductoCodigo, Surtido, ConfigAlmacen, Garantia, HistorialEstatusGarantia, MediaGarantia, AuditEvent, ClienteCreditoExcepcion, ClienteMobileOtp, ClienteMobileSession, ClienteMobileOrder, ClienteMobileOrderItem, DeviceToken, CustomerNotification],
+      entities: [Pedido, DetallePedido, Producto, AlmacenUser, AlmacenUserBaseConfig, ControlSincronizacion, ProductoCodigo, Surtido, ConfigAlmacen, Garantia, HistorialEstatusGarantia, MediaGarantia, AuditEvent, ClienteCreditoExcepcion, ClienteMobileOtp, ClienteMobileSession, ClienteMobileOrder, ClienteMobileOrderItem, ClienteMobileOrderStatusHistory, DeviceToken, CustomerNotification],
       synchronize: false, // ¡Cuidado en producción!
     }),
 

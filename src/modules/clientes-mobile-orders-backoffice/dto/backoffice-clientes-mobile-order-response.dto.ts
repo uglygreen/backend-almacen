@@ -252,6 +252,32 @@ export class BackofficeOrderItemDto {
   total: number;
 }
 
+export class BackofficeOrderStatusHistoryItemDto {
+  @ApiProperty()
+  id: number;
+
+  @ApiPropertyOptional()
+  previousStatus: string | null;
+
+  @ApiProperty()
+  status: string;
+
+  @ApiPropertyOptional()
+  message: string | null;
+
+  @ApiPropertyOptional()
+  changedBy: string | null;
+
+  @ApiProperty()
+  notifyCustomer: boolean;
+
+  @ApiPropertyOptional()
+  notificationId: number | null;
+
+  @ApiProperty()
+  createdAt: Date;
+}
+
 export class BackofficeSubmittedOrderListItemDto {
   @ApiProperty()
   id: number;
@@ -317,4 +343,7 @@ export class BackofficeSubmittedOrderDetailDto {
 
   @ApiProperty({ type: [BackofficeOrderItemDto] })
   items: BackofficeOrderItemDto[];
+
+  @ApiProperty({ type: [BackofficeOrderStatusHistoryItemDto] })
+  history: BackofficeOrderStatusHistoryItemDto[];
 }

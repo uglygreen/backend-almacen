@@ -1,8 +1,9 @@
-import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Query } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ClienteMobileOrderStatus } from '../clientes-mobile-orders/entities/cliente-mobile-order.entity';
 import { ClientesMobileOrdersBackofficeService } from './clientes-mobile-orders-backoffice.service';
 import { ListClientesMobileOrdersBackofficeDto } from './dto/list-clientes-mobile-orders-backoffice.dto';
+import { UpdateClientesMobileOrderStatusDto } from './dto/update-clientes-mobile-order-status.dto';
 
 @ApiTags('Clientes Mobile Orders Backoffice')
 @Controller('almacen/v1/clientes-mobile-orders-backoffice')
@@ -26,8 +27,17 @@ export class ClientesMobileOrdersBackofficeController {
   }
 
   @Get('orders/:id')
-  @ApiOperation({ summary: 'Obtiene el detalle de un pedido mobile enviado para intranet/backoffice' })
+  @ApiOperation({ summary: 'Obtiene el detalle de un pedido mobile para intranet/backoffice' })
   getSubmittedOrderDetail(@Param('id', ParseIntPipe) id: number) {
     return this.clientesMobileOrdersBackofficeService.getSubmittedOrderDetail(id);
+  }
+
+  @Patch('orders/:id/status')
+  @ApiOperation({ summary: 'Actualiza el estatus de un pedido mobile y opcionalmente notifica al cliente' })
+  updateOrderStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateClientesMobileOrderStatusDto,
+  ) {
+    return this.clientesMobileOrdersBackofficeService.updateOrderStatus(id, body);
   }
 }

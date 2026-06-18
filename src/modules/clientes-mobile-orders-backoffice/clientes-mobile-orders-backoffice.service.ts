@@ -1,11 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
-import { Cliente } from '../../entities';
+import { In, Not, Repository } from 'typeorm';
+import { Cliente, CustomerNotificationType } from '../../entities';
 import { CorreoLegacy } from '../../entities/correo-legacy.entity';
 import { DomLegacy } from '../../entities/dom-legacy.entity';
 import { Personal } from '../../entities/personal.entity';
 import { ClientesCreditoService } from '../clientes-credito/clientes-credito.service';
+import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
+import { ClienteMobileOrderStatusHistory } from '../clientes-mobile-orders/entities/cliente-mobile-order-status-history.entity';
 import { ClienteMobileOrder, ClienteMobileOrderStatus } from '../clientes-mobile-orders/entities/cliente-mobile-order.entity';
 import { ClienteMobileOrderItem } from '../clientes-mobile-orders/entities/cliente-mobile-order-item.entity';
 import {
@@ -15,20 +17,27 @@ import {
   BackofficeOrderBillingDto,
   BackofficeOrderDeliveryDto,
   BackofficeOrderItemDto,
+  BackofficeOrderStatusHistoryItemDto,
   BackofficeOrderSummaryDto,
   BackofficeSubmittedOrderDetailDto,
   BackofficeSubmittedOrderListItemDto,
 } from './dto/backoffice-clientes-mobile-order-response.dto';
 import { ListClientesMobileOrdersBackofficeDto } from './dto/list-clientes-mobile-orders-backoffice.dto';
+import { UpdateClientesMobileOrderStatusDto } from './dto/update-clientes-mobile-order-status.dto';
 
 @Injectable()
 export class ClientesMobileOrdersBackofficeService {
+  private readonly logger = new Logger(ClientesMobileOrdersBackofficeService.name);
+
   constructor(
     @InjectRepository(ClienteMobileOrder)
     private readonly ordersRepository: Repository<ClienteMobileOrder>,
+    @InjectRepository(ClienteMobileOrderStatusHistory)
+    private readonly orderStatusHistoryRepository: Repository<ClienteMobileOrderStatusHistory>,
     @InjectRepository(Cliente, 'legacy_db')
     private readonly clientesRepository: Repository<Cliente>,
     private readonly clientesCreditoService: ClientesCreditoService,
+    private readonly customerNotificationsService: CustomerNotificationsService,
   ) {}
 
   async listSubmittedOrders(query: ListClientesMobileOrdersBackofficeDto) {
@@ -65,28 +74,120 @@ export class ClientesMobileOrdersBackofficeService {
   }
 
   async getSubmittedOrderDetail(orderId: number) {
-    const order = await this.ordersRepository.findOne({
-      where: {
-        id: orderId,
-        status: ClienteMobileOrderStatus.SUBMITTED,
-      },
-      relations: ['items'],
-      order: {
-        items: {
-          id: 'ASC',
-        },
-      },
-    });
-
-    if (!order) {
-      throw new NotFoundException(`No se encontró el pedido enviado ${orderId}`);
-    }
+    const order = await this.findBackofficeOrderById(orderId);
 
     const cliente = await this.findClienteById(order.clienteId);
     const credit = order.creditSnapshot ?? await this.clientesCreditoService.getResumenCliente(order.clienteId);
+    const history = await this.findOrderHistory(order.id);
 
     return {
-      order: this.mapSubmittedOrderDetail(order, cliente, credit),
+      order: this.mapSubmittedOrderDetail(order, cliente, credit, history),
+    };
+  }
+
+  async updateOrderStatus(orderId: number, dto: UpdateClientesMobileOrderStatusDto) {
+    const order = await this.findBackofficeOrderById(orderId);
+    const previousStatus = order.status;
+    const nextStatus = dto.status;
+    const notifyCustomer = dto.notifyCustomer ?? true;
+    const changedBy = this.cleanNullableString(dto.changedBy) ?? 'backoffice';
+    const customMessage = this.cleanNullableString(dto.message);
+
+    if (previousStatus === nextStatus) {
+      const history = await this.findOrderHistory(order.id);
+      return {
+        updated: false,
+        reason: 'STATUS_UNCHANGED',
+        order: {
+          id: order.id,
+          previousStatus,
+          status: order.status,
+          updatedAt: order.updatedAt,
+        },
+        history: history.map((item) => this.mapHistoryItem(item)),
+        notification: {
+          requested: false,
+          sent: false,
+          id: null,
+        },
+      };
+    }
+
+    this.assertValidStatusTransition(previousStatus, nextStatus);
+
+    order.status = nextStatus;
+    const savedOrder = await this.ordersRepository.save(order);
+
+    const historyEntry = await this.orderStatusHistoryRepository.save(
+      this.orderStatusHistoryRepository.create({
+        orderId: savedOrder.id,
+        previousStatus,
+        status: nextStatus,
+        message: customMessage ?? this.buildDefaultStatusMessage(savedOrder, nextStatus),
+        changedBy,
+        notifyCustomer,
+        notificationId: null,
+      }),
+    );
+
+    let notificationSummary = {
+      requested: notifyCustomer,
+      sent: false,
+      id: null as number | null,
+      status: null as string | null,
+      errorCode: null as string | null,
+      errorMessage: null as string | null,
+    };
+
+    if (notifyCustomer) {
+      try {
+        const notificationPayload = this.buildStatusNotificationPayload(savedOrder, historyEntry);
+        const notificationResult = await this.customerNotificationsService.dispatchCustomerNotification(
+          notificationPayload,
+        );
+
+        const notificationId = notificationResult.notification?.id ?? null;
+        if (notificationId) {
+          historyEntry.notificationId = notificationId;
+          await this.orderStatusHistoryRepository.save(historyEntry);
+        }
+
+        notificationSummary = {
+          requested: true,
+          sent: Boolean(notificationResult.delivered),
+          id: notificationId,
+          status: notificationResult.notification?.status ?? null,
+          errorCode: notificationResult.notification?.errorCode ?? null,
+          errorMessage: notificationResult.notification?.errorMessage ?? null,
+        };
+      } catch (error: any) {
+        this.logger.error(
+          `No se pudo notificar el cambio de estatus del pedido ${savedOrder.id}: ${error?.message ?? error}`,
+        );
+
+        notificationSummary = {
+          requested: true,
+          sent: false,
+          id: null,
+          status: 'failed',
+          errorCode: error?.code ?? 'ORDER_STATUS_NOTIFICATION_ERROR',
+          errorMessage: error?.message ?? 'No se pudo enviar la notificación al cliente',
+        };
+      }
+    }
+
+    const history = await this.findOrderHistory(savedOrder.id);
+    return {
+      updated: true,
+      order: {
+        id: savedOrder.id,
+        previousStatus,
+        status: savedOrder.status,
+        updatedAt: savedOrder.updatedAt,
+      },
+      historyEntry: this.mapHistoryItem(historyEntry),
+      history: history.map((item) => this.mapHistoryItem(item)),
+      notification: notificationSummary,
     };
   }
 
@@ -146,6 +247,7 @@ export class ClientesMobileOrdersBackofficeService {
     order: ClienteMobileOrder,
     cliente: Cliente,
     creditSource: any,
+    history: ClienteMobileOrderStatusHistory[],
   ): BackofficeSubmittedOrderDetailDto {
     return {
       id: order.id,
@@ -160,6 +262,7 @@ export class ClientesMobileOrdersBackofficeService {
       summary: this.mapSummary(order),
       credit: this.mapCredit(creditSource),
       items: (order.items ?? []).map((item) => this.mapItem(item)),
+      history: history.map((item) => this.mapHistoryItem(item)),
     };
   }
 
@@ -222,6 +325,21 @@ export class ClientesMobileOrdersBackofficeService {
       subtotal: this.toMoney(item.subtotal),
       iva: this.toMoney(item.iva),
       total: this.toMoney(item.total),
+    };
+  }
+
+  private mapHistoryItem(
+    item: ClienteMobileOrderStatusHistory,
+  ): BackofficeOrderStatusHistoryItemDto {
+    return {
+      id: item.id,
+      previousStatus: item.previousStatus,
+      status: item.status,
+      message: this.cleanNullableString(item.message),
+      changedBy: this.cleanNullableString(item.changedBy),
+      notifyCustomer: Boolean(item.notifyCustomer),
+      notificationId: item.notificationId ?? null,
+      createdAt: item.createdAt,
     };
   }
 
@@ -338,6 +456,151 @@ export class ClientesMobileOrdersBackofficeService {
     const preferred = correos.find((correo) => this.cleanNullableString(correo.cEnviar) === 'S');
     const selected = preferred ?? correos[0];
     return this.cleanNullableString(selected?.correo);
+  }
+
+  private async findBackofficeOrderById(orderId: number) {
+    const order = await this.ordersRepository.findOne({
+      where: {
+        id: orderId,
+        status: Not(ClienteMobileOrderStatus.DRAFT),
+      },
+      relations: ['items'],
+      order: {
+        items: {
+          id: 'ASC',
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`No se encontró el pedido mobile ${orderId}`);
+    }
+
+    return order;
+  }
+
+  private async findOrderHistory(orderId: number) {
+    return this.orderStatusHistoryRepository.find({
+      where: { orderId },
+      order: {
+        createdAt: 'DESC',
+        id: 'DESC',
+      },
+    });
+  }
+
+  private assertValidStatusTransition(
+    currentStatus: ClienteMobileOrderStatus,
+    nextStatus: ClienteMobileOrderStatus,
+  ) {
+    const allowedTransitions: Record<ClienteMobileOrderStatus, ClienteMobileOrderStatus[]> = {
+      [ClienteMobileOrderStatus.DRAFT]: [],
+      [ClienteMobileOrderStatus.SUBMITTED]: [
+        ClienteMobileOrderStatus.ACCEPTED,
+        ClienteMobileOrderStatus.CANCELLED,
+      ],
+      [ClienteMobileOrderStatus.ACCEPTED]: [
+        ClienteMobileOrderStatus.PACKING,
+        ClienteMobileOrderStatus.READY_TO_SHIP,
+        ClienteMobileOrderStatus.CANCELLED,
+      ],
+      [ClienteMobileOrderStatus.PACKING]: [
+        ClienteMobileOrderStatus.READY_TO_SHIP,
+        ClienteMobileOrderStatus.CANCELLED,
+      ],
+      [ClienteMobileOrderStatus.READY_TO_SHIP]: [
+        ClienteMobileOrderStatus.IN_ROUTE,
+        ClienteMobileOrderStatus.DELIVERED,
+        ClienteMobileOrderStatus.CANCELLED,
+      ],
+      [ClienteMobileOrderStatus.IN_ROUTE]: [
+        ClienteMobileOrderStatus.DELIVERED,
+        ClienteMobileOrderStatus.CANCELLED,
+      ],
+      [ClienteMobileOrderStatus.DELIVERED]: [],
+      [ClienteMobileOrderStatus.CANCELLED]: [],
+    };
+
+    const allowedNextStatuses = allowedTransitions[currentStatus] ?? [];
+    if (!allowedNextStatuses.includes(nextStatus)) {
+      throw new BadRequestException(
+        `No se permite cambiar el estatus de ${currentStatus} a ${nextStatus}`,
+      );
+    }
+  }
+
+  private buildStatusNotificationPayload(
+    order: ClienteMobileOrder,
+    historyEntry: ClienteMobileOrderStatusHistory,
+  ) {
+    const title = this.buildStatusNotificationTitle(order.status);
+    const body = historyEntry.message ?? this.buildDefaultStatusMessage(order, order.status);
+    const dedupeKey = `${CustomerNotificationType.ORDER_STATUS_UPDATED}:${order.id}:${historyEntry.id}`;
+
+    return {
+      customerId: order.clienteId,
+      type: CustomerNotificationType.ORDER_STATUS_UPDATED,
+      title,
+      body,
+      dedupeKey,
+      scheduledFor: new Date(),
+      metadata: {
+        source: 'clientes_mobile_orders_backoffice',
+        orderId: order.id,
+        previousStatus: historyEntry.previousStatus,
+        status: historyEntry.status,
+        changedBy: historyEntry.changedBy,
+      },
+      data: {
+        source: 'clientes_mobile_orders_backoffice',
+        orderId: order.id,
+        status: historyEntry.status,
+        previousStatus: historyEntry.previousStatus,
+      },
+    };
+  }
+
+  private buildStatusNotificationTitle(status: ClienteMobileOrderStatus) {
+    switch (status) {
+      case ClienteMobileOrderStatus.ACCEPTED:
+        return 'Tu pedido fue aceptado';
+      case ClienteMobileOrderStatus.PACKING:
+        return 'Tu pedido esta en surtido';
+      case ClienteMobileOrderStatus.READY_TO_SHIP:
+        return 'Tu pedido esta listo';
+      case ClienteMobileOrderStatus.IN_ROUTE:
+        return 'Tu pedido va en camino';
+      case ClienteMobileOrderStatus.DELIVERED:
+        return 'Tu pedido fue entregado';
+      case ClienteMobileOrderStatus.CANCELLED:
+        return 'Tu pedido fue cancelado';
+      default:
+        return 'Actualizacion de tu pedido';
+    }
+  }
+
+  private buildDefaultStatusMessage(
+    order: ClienteMobileOrder,
+    status: ClienteMobileOrderStatus,
+  ) {
+    switch (status) {
+      case ClienteMobileOrderStatus.ACCEPTED:
+        return `Tu pedido #${order.id} fue aceptado y pronto comenzaremos a prepararlo.`;
+      case ClienteMobileOrderStatus.PACKING:
+        return `Tu pedido #${order.id} ya esta siendo surtido en almacen.`;
+      case ClienteMobileOrderStatus.READY_TO_SHIP:
+        return order.deliveryType === 'PICKUP'
+          ? `Tu pedido #${order.id} ya esta listo para recoger en oficina.`
+          : `Tu pedido #${order.id} ya esta listo para envio.`;
+      case ClienteMobileOrderStatus.IN_ROUTE:
+        return `Tu pedido #${order.id} ya va en camino.`;
+      case ClienteMobileOrderStatus.DELIVERED:
+        return `Tu pedido #${order.id} fue entregado correctamente.`;
+      case ClienteMobileOrderStatus.CANCELLED:
+        return `Tu pedido #${order.id} fue cancelado.`;
+      default:
+        return `El estatus de tu pedido #${order.id} cambio a ${status}.`;
+    }
   }
 
   private normalizeNumeroCliente(value: string | null | undefined) {
