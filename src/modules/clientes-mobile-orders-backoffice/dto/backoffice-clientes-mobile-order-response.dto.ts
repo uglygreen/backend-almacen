@@ -297,6 +297,9 @@ export class BackofficeSubmittedOrderDetailDto {
   @ApiPropertyOptional()
   updatedAt: Date | null;
 
+  @ApiPropertyOptional()
+  nota: string | null;
+
   @ApiProperty()
   customer: BackofficeCustomerDto;
 

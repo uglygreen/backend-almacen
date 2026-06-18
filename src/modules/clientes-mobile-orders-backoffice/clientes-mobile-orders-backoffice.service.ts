@@ -153,6 +153,7 @@ export class ClientesMobileOrdersBackofficeService {
       submittedAt: order.submittedAt,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
+      nota: this.cleanNullableString(order.nota),
       customer: this.mapCustomer(cliente, order),
       billing: this.mapBilling(order),
       delivery: this.mapDelivery(order),
