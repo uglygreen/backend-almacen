@@ -21,7 +21,13 @@ import {
   ClienteMobileOrderDeliveryType,
   ClienteMobileOrderStatus,
 } from './entities/cliente-mobile-order.entity';
+import { buildLegacyDocumentFolio } from './utils/mobile-order-reference.util';
 import { ClienteMobileOrderItem } from './entities/cliente-mobile-order-item.entity';
+import { ClienteMobileOrderStatusHistory } from './entities/cliente-mobile-order-status-history.entity';
+import {
+  buildMobileOrderTrackingSummary,
+  buildMobileOrderTrackingTimeline,
+} from './utils/mobile-order-tracking-timeline.util';
 
 type CatalogProductRow = {
   id: number;
@@ -72,6 +78,8 @@ export class ClientesMobileOrdersService {
     private readonly ordersRepository: Repository<ClienteMobileOrder>,
     @InjectRepository(ClienteMobileOrderItem)
     private readonly orderItemsRepository: Repository<ClienteMobileOrderItem>,
+    @InjectRepository(ClienteMobileOrderStatusHistory)
+    private readonly orderStatusHistoryRepository: Repository<ClienteMobileOrderStatusHistory>,
     @InjectRepository(Cliente, 'legacy_db')
     private readonly clientesRepository: Repository<Cliente>,
     @InjectDataSource('legacy_db')
@@ -95,7 +103,7 @@ export class ClientesMobileOrdersService {
         clienteId,
         status,
       },
-      relations: ['items'],
+      relations: ['items', 'legacyDocuments'],
       order: {
         updatedAt: 'DESC',
         id: 'DESC',
@@ -107,7 +115,7 @@ export class ClientesMobileOrdersService {
     }
 
     return {
-      items: orders.map((order) => this.mapOrder(order)),
+      items: await Promise.all(orders.map((order) => this.mapOrder(order))),
     };
   }
 
@@ -126,7 +134,7 @@ export class ClientesMobileOrdersService {
         clienteId,
         status: Not(ClienteMobileOrderStatus.DRAFT),
       },
-      relations: ['items'],
+      relations: ['items', 'legacyDocuments'],
       order: {
         submittedAt: 'DESC',
         updatedAt: 'DESC',
@@ -135,7 +143,7 @@ export class ClientesMobileOrdersService {
     });
 
     return {
-      items: orders.map((order) => this.mapOrder(order)),
+      items: await Promise.all(orders.map((order) => this.mapOrder(order))),
     };
   }
 
@@ -159,6 +167,10 @@ export class ClientesMobileOrdersService {
       cfdiUse: null,
       creditSnapshot: null,
       nota: null,
+      mobileReference: null,
+      legacyDocumentsCount: 0,
+      allLegacyDocumentsInvoiced: false,
+      lastLegacySyncAt: null,
       submittedAt: null,
     });
 
@@ -176,7 +188,7 @@ export class ClientesMobileOrdersService {
     const order = await this.findOwnedOrder(clienteId, orderId, ClienteMobileOrderStatus.DRAFT);
     await this.refreshDraftOrdersPricing([order]);
     return {
-      order: this.mapOrder(order),
+      order: await this.mapOrder(order),
     };
   }
 
@@ -192,7 +204,9 @@ export class ClientesMobileOrdersService {
     const saved = await this.ordersRepository.save(order);
 
     return {
-      order: this.mapOrder(await this.findOwnedOrder(clienteId, saved.id, ClienteMobileOrderStatus.DRAFT)),
+      order: await this.mapOrder(
+        await this.findOwnedOrder(clienteId, saved.id, ClienteMobileOrderStatus.DRAFT),
+      ),
     };
   }
 
@@ -246,7 +260,7 @@ export class ClientesMobileOrdersService {
     }
 
     return {
-      order: this.mapOrder(await this.recalculateAndReloadOrder(clienteId, order.id)),
+      order: await this.mapOrder(await this.recalculateAndReloadOrder(clienteId, order.id)),
     };
   }
 
@@ -273,7 +287,7 @@ export class ClientesMobileOrdersService {
     await this.orderItemsRepository.save(item);
 
     return {
-      order: this.mapOrder(await this.recalculateAndReloadOrder(clienteId, orderId)),
+      order: await this.mapOrder(await this.recalculateAndReloadOrder(clienteId, orderId)),
     };
   }
 
@@ -294,7 +308,7 @@ export class ClientesMobileOrdersService {
     await this.orderItemsRepository.delete(item.id);
 
     return {
-      order: this.mapOrder(await this.recalculateAndReloadOrder(clienteId, orderId)),
+      order: await this.mapOrder(await this.recalculateAndReloadOrder(clienteId, orderId)),
     };
   }
 
@@ -333,8 +347,10 @@ export class ClientesMobileOrdersService {
       this.ensureDraftCanBeSubmitted(order);
       await this.ensureFiscalData(order, cliente);
 
+      const mobileReference = this.buildOrderReference(order, submittedAt);
       order.creditSnapshot = this.buildCreditSnapshot(creditSummary);
-      order.nota = this.buildSubmittedOrderNote(order, submittedAt);
+      order.mobileReference = mobileReference;
+      order.nota = this.buildSubmittedOrderNote(order, mobileReference);
       order.status = ClienteMobileOrderStatus.SUBMITTED;
       order.submittedAt = submittedAt;
     }
@@ -346,7 +362,7 @@ export class ClientesMobileOrdersService {
         id: In(uniqueOrderIds),
         clienteId,
       },
-      relations: ['items'],
+      relations: ['items', 'legacyDocuments'],
       order: {
         id: 'ASC',
       },
@@ -355,7 +371,7 @@ export class ClientesMobileOrdersService {
     return {
       submitted: true,
       count: submittedOrders.length,
-      orders: submittedOrders.map((order) => this.mapOrder(order)),
+      orders: await Promise.all(submittedOrders.map((order) => this.mapOrder(order))),
     };
   }
 
@@ -364,8 +380,33 @@ export class ClientesMobileOrdersService {
     if (order.status === ClienteMobileOrderStatus.DRAFT) {
       await this.refreshDraftOrdersPricing([order]);
     }
+
     return {
-      order: this.mapOrder(order),
+      order: await this.mapOrder(order),
+    };
+  }
+
+  async getOrderTrackingTimeline(clienteId: number, orderId: number) {
+    const order = await this.findOwnedOrder(clienteId, orderId);
+    const history = await this.findOrderHistory(order.id);
+    const legacyDocuments = (order.legacyDocuments ?? []).map((document) => this.mapLegacyDocument(document));
+
+    return {
+      orderId: order.id,
+      status: order.status,
+      mobileReference: order.mobileReference ?? null,
+      trackingSummary: buildMobileOrderTrackingSummary(order.status),
+      trackingTimeline: buildMobileOrderTrackingTimeline({
+        order: {
+          id: order.id,
+          status: order.status,
+          createdAt: order.createdAt,
+          submittedAt: order.submittedAt,
+          deliveryType: order.deliveryType,
+        },
+        history: history.map((item) => this.mapHistoryItem(item)),
+        legacyDocuments,
+      }),
     };
   }
 
@@ -536,8 +577,7 @@ export class ClientesMobileOrdersService {
     };
   }
 
-  private buildSubmittedOrderNote(order: ClienteMobileOrder, submittedAt: Date) {
-    const reference = this.buildOrderReference(order, submittedAt);
+  private buildSubmittedOrderNote(order: ClienteMobileOrder, reference: string) {
     const parts = ['APP:MOBILE', `REF:${reference}`];
 
     if (order.deliveryType === ClienteMobileOrderDeliveryType.PICKUP) {
@@ -768,8 +808,13 @@ export class ClientesMobileOrdersService {
     return changed;
   }
 
-  private mapOrder(order: ClienteMobileOrder) {
+  private async mapOrder(order: ClienteMobileOrder) {
     const validation = this.buildDraftValidation(order);
+    const legacyDocuments = (order.legacyDocuments ?? []).map((document) =>
+      this.mapLegacyDocument(document),
+    );
+    const history = await this.findOrderHistory(order.id);
+
     return {
       id: order.id,
       clienteId: order.clienteId,
@@ -787,6 +832,25 @@ export class ClientesMobileOrdersService {
       },
       creditSnapshot: order.creditSnapshot,
       nota: order.nota,
+      mobileReference: order.mobileReference ?? null,
+      legacyDocumentsCount: this.toNumber(order.legacyDocumentsCount),
+      allLegacyDocumentsInvoiced: Boolean(order.allLegacyDocumentsInvoiced),
+      lastLegacySyncAt: order.lastLegacySyncAt,
+      legacySummary: this.buildLegacySummary(legacyDocuments),
+      legacyDocuments,
+      legacyInvoices: legacyDocuments.filter((document) => document.isFacturado),
+      trackingSummary: buildMobileOrderTrackingSummary(order.status),
+      trackingTimeline: buildMobileOrderTrackingTimeline({
+        order: {
+          id: order.id,
+          status: order.status,
+          createdAt: order.createdAt,
+          submittedAt: order.submittedAt,
+          deliveryType: order.deliveryType,
+        },
+        history: history.map((item) => this.mapHistoryItem(item)),
+        legacyDocuments,
+      }),
       items: (order.items ?? []).map((item) => ({
         id: item.id,
         productId: item.productId,
@@ -811,6 +875,74 @@ export class ClientesMobileOrdersService {
     };
   }
 
+  private mapLegacyDocument(document: any) {
+    const estado = this.cleanNullableString(document.legacyEstado);
+
+    return {
+      id: document.id,
+      legacyDocId: document.legacyDocId,
+      pedidoId: document.pedidoId,
+      numero: document.legacyNumero,
+      serie: document.legacySerie,
+      tipo: document.legacyTipo,
+      estado,
+      nota: document.legacyNota,
+      matchedReference: document.matchedReference,
+      isFacturado: Boolean(document.isFacturado),
+      isCancelled: estado === 'C',
+      isActive: estado !== 'C',
+      facturadoAt: document.facturadoAt,
+      folio: buildLegacyDocumentFolio(document.legacySerie, document.legacyNumero),
+      createdAt: document.createdAt,
+      updatedAt: document.updatedAt,
+    };
+  }
+
+  private mapHistoryItem(item: ClienteMobileOrderStatusHistory) {
+    return {
+      id: item.id,
+      previousStatus: item.previousStatus,
+      status: item.status,
+      message: this.cleanNullableString(item.message),
+      changedBy: this.cleanNullableString(item.changedBy),
+      notifyCustomer: Boolean(item.notifyCustomer),
+      createdAt: item.createdAt,
+    };
+  }
+
+  private buildLegacySummary(
+    documents: Array<{
+      isFacturado: boolean;
+      isCancelled: boolean;
+      folio: string | null;
+      facturadoAt: Date | null;
+    }>,
+  ) {
+    const totalDocuments = documents.length;
+    const invoicedDocuments = documents.filter((document) => document.isFacturado);
+    const cancelledDocuments = documents.filter((document) => document.isCancelled);
+    const activeDocuments = documents.filter((document) => !document.isCancelled);
+    const invoiceFolios = invoicedDocuments
+      .map((document) => document.folio)
+      .filter((folio): folio is string => Boolean(folio));
+    const lastFacturadoAt = invoicedDocuments
+      .map((document) => document.facturadoAt)
+      .filter((date): date is Date => date instanceof Date)
+      .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+
+    return {
+      totalDocuments,
+      invoicedDocuments: invoicedDocuments.length,
+      cancelledDocuments: cancelledDocuments.length,
+      activeDocuments: activeDocuments.length,
+      pendingDocuments: totalDocuments - invoicedDocuments.length - cancelledDocuments.length,
+      allInvoiced: totalDocuments > 0 && invoicedDocuments.length === totalDocuments,
+      allCancelled: totalDocuments > 0 && cancelledDocuments.length === totalDocuments,
+      invoiceFolios,
+      lastFacturadoAt,
+    };
+  }
+
   private async findOwnedOrder(
     clienteId: number,
     orderId: number,
@@ -827,9 +959,12 @@ export class ClientesMobileOrdersService {
 
     const order = await this.ordersRepository.findOne({
       where,
-      relations: ['items'],
+      relations: ['items', 'legacyDocuments'],
       order: {
         items: {
+          id: 'ASC',
+        },
+        legacyDocuments: {
           id: 'ASC',
         },
       },
@@ -840,6 +975,16 @@ export class ClientesMobileOrdersService {
     }
 
     return order;
+  }
+
+  private async findOrderHistory(orderId: number) {
+    return this.orderStatusHistoryRepository.find({
+      where: { orderId },
+      order: {
+        createdAt: 'ASC',
+        id: 'ASC',
+      },
+    });
   }
 
   private async findClienteById(clienteId: number, relations: string[] = []) {

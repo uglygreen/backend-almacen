@@ -6,6 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { ClienteMobileOrderLegacyDocument } from './cliente-mobile-order-legacy-document.entity';
 import { ClienteMobileOrderItem } from './cliente-mobile-order-item.entity';
 
 export enum ClienteMobileOrderStatus {
@@ -77,6 +78,23 @@ export class ClienteMobileOrder {
   @Column({ type: 'varchar', length: 255, nullable: true })
   nota: string | null;
 
+  @Column({ name: 'mobile_reference', type: 'varchar', length: 50, nullable: true })
+  mobileReference: string | null;
+
+  @Column({ name: 'legacy_documents_count', type: 'int', unsigned: true, default: 0 })
+  legacyDocumentsCount: number;
+
+  @Column({
+    name: 'all_legacy_documents_invoiced',
+    type: 'tinyint',
+    width: 1,
+    default: () => '0',
+  })
+  allLegacyDocumentsInvoiced: boolean;
+
+  @Column({ name: 'last_legacy_sync_at', type: 'datetime', nullable: true })
+  lastLegacySyncAt: Date | null;
+
   @Column({ name: 'submitted_at', type: 'datetime', nullable: true })
   submittedAt: Date | null;
 
@@ -90,4 +108,9 @@ export class ClienteMobileOrder {
     cascade: false,
   })
   items: ClienteMobileOrderItem[];
+
+  @OneToMany(() => ClienteMobileOrderLegacyDocument, (document) => document.order, {
+    cascade: false,
+  })
+  legacyDocuments: ClienteMobileOrderLegacyDocument[];
 }

@@ -3,6 +3,7 @@ import { SincronizacionService } from './sincronizacion.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ControlSincronizacion, DetallePedido, Pedido, Producto, ProductoCodigo } from 'src/entities';
 import { EventsModule } from '../events/events.module';
+import { ClientesMobileOrdersModule } from '../modules/clientes-mobile-orders/clientes-mobile-orders.module';
 
 @Module({
   imports: [
@@ -14,7 +15,8 @@ import { EventsModule } from '../events/events.module';
       DetallePedido,
       ProductoCodigo 
     ]),
-    EventsModule
+    EventsModule,
+    ClientesMobileOrdersModule,
   ],
   providers: [SincronizacionService],
 })

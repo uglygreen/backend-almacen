@@ -4,6 +4,10 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { ControlSincronizacion, DetallePedido, Pedido, Producto, ProductoCodigo, StatusEntrega, StatusGlobal, Zona } from 'src/entities';
 import { EventsGateway } from 'src/events/events.gateway';
 import { DataSource, In, Not, Repository } from 'typeorm';
+import { ClientesMobileOrderWorkflowService } from '../modules/clientes-mobile-orders/clientes-mobile-order-workflow.service';
+import { ClienteMobileOrderLegacyDocument } from '../modules/clientes-mobile-orders/entities/cliente-mobile-order-legacy-document.entity';
+import { ClienteMobileOrder, ClienteMobileOrderStatus } from '../modules/clientes-mobile-orders/entities/cliente-mobile-order.entity';
+import { extractMobileReference, normalizeMobileReference } from '../modules/clientes-mobile-orders/utils/mobile-order-reference.util';
 
 
 // Interfaz auxiliar para el tipado interno del array acumulador
@@ -43,7 +47,8 @@ export class SincronizacionService {
     // Conexión a BD Legacy (Lectura - datosb)
     @InjectDataSource('legacy_db') private dataSourceLegacy: DataSource,
 
-    private eventsGateway: EventsGateway
+    private eventsGateway: EventsGateway,
+    private readonly mobileOrderWorkflowService: ClientesMobileOrderWorkflowService,
   ) {}
 
   // Se ejecuta cada 60 segundos
@@ -170,7 +175,7 @@ export class SincronizacionService {
         // Usamos LIMIT 1 para evitar duplicidad si el cliente tiene múltiples características
         const headerData = await this.dataSourceLegacy.query(`
             SELECT 
-                D.DOCID, D.CLIENTEID, D.NUMERO, D.SERIE, D.FECHA, C.NOMBRE AS CLIENTE, D.NOTA, CLA.CLATEXTO
+                D.DOCID, D.CLIENTEID, D.NUMERO, D.SERIE, D.FECHA, D.TIPO, D.ESTADO, C.NOMBRE AS CLIENTE, D.NOTA, CLA.CLATEXTO
             FROM DOC D
             JOIN CLI C ON D.CLIENTEID = C.CLIENTEID
             LEFT OUTER JOIN CARCLI CAR ON D.CLIENTEID = CAR.CARID
@@ -359,6 +364,7 @@ export class SincronizacionService {
 
         await queryRunner.commitTransaction();
         this.logger.log(`Pedido con DOCID ${docId} importado correctamente.`);
+        await this.tryAssociateLegacyDocumentWithMobileOrder(header, pedidoGuardado);
 
       } catch (err) {
         this.logger.error(`Error en transacción para DOCID ${docId}`, err);
@@ -467,6 +473,8 @@ export class SincronizacionService {
         for (const pedido of pedidosCerrados) {
           this.eventsGateway.emitirCambioEstado({ idPedido: pedido.id, nuevoEstado: StatusGlobal.COMPLETADO });
         }
+
+        await this.syncMobileOrdersFacturados(idsFacturados);
       }
     }
   }
@@ -525,8 +533,233 @@ export class SincronizacionService {
         for (const pedido of pedidosCancelados) {
           this.eventsGateway.emitirCambioEstado({ idPedido: pedido.id, nuevoEstado: StatusGlobal.CANCELADO });
         }
+
+        await this.syncMobileOrdersCancelados(idsCancelados);
       }
     }
+  }
+
+  private async tryAssociateLegacyDocumentWithMobileOrder(header: any, pedido: Pedido) {
+    const matchedReference = extractMobileReference(header?.NOTA);
+    if (!matchedReference) {
+      return;
+    }
+    const normalizedReference = normalizeMobileReference(matchedReference);
+    if (!normalizedReference) {
+      return;
+    }
+
+    const mobileOrdersRepository = this.dataSourceSistemas.getRepository(ClienteMobileOrder);
+    const legacyDocumentsRepository = this.dataSourceSistemas.getRepository(
+      ClienteMobileOrderLegacyDocument,
+    );
+
+    const mobileOrder = await mobileOrdersRepository.findOne({
+      where: {
+        mobileReference: normalizedReference,
+      },
+      relations: ['legacyDocuments'],
+    });
+
+    if (!mobileOrder) {
+      this.logger.warn(
+        `No se encontró pedido mobile para la referencia ${matchedReference} del DOCID ${header?.DOCID}.`,
+      );
+      return;
+    }
+
+    let legacyDocument = await legacyDocumentsRepository.findOne({
+      where: {
+        orderId: mobileOrder.id,
+        legacyDocId: pedido.idExternoDoc,
+      },
+    });
+
+    legacyDocument = legacyDocument ?? legacyDocumentsRepository.create({
+      orderId: mobileOrder.id,
+      legacyDocId: pedido.idExternoDoc,
+    });
+
+    legacyDocument.pedidoId = pedido.id ?? null;
+    legacyDocument.legacyNumero = this.cleanNullableString(header?.NUMERO);
+    legacyDocument.legacySerie = this.cleanNullableString(header?.SERIE);
+    legacyDocument.legacyTipo = this.cleanNullableString(header?.TIPO);
+    legacyDocument.legacyEstado = this.cleanNullableString(header?.ESTADO);
+    legacyDocument.legacyNota = this.cleanNullableString(header?.NOTA);
+    legacyDocument.matchedReference = matchedReference;
+    legacyDocument.isFacturado = this.cleanNullableString(header?.ESTADO) === 'F';
+    legacyDocument.facturadoAt = legacyDocument.isFacturado
+      ? legacyDocument.facturadoAt ?? new Date()
+      : null;
+
+    await legacyDocumentsRepository.save(legacyDocument);
+
+    const refreshedMobileOrder = await this.refreshMobileOrderLegacySummary(mobileOrder.id);
+    if (
+      refreshedMobileOrder
+      && [
+        ClienteMobileOrderStatus.SUBMITTED,
+        ClienteMobileOrderStatus.ACCEPTED,
+      ].includes(refreshedMobileOrder.status)
+    ) {
+      await this.mobileOrderWorkflowService.changeOrderStatus({
+        orderId: refreshedMobileOrder.id,
+        nextStatus: ClienteMobileOrderStatus.PACKING,
+        source: 'sync',
+        changedBy: 'sincronizacion.procesarPedidosPorIds',
+        notifyCustomer: true,
+        metadataSource: 'sincronizacion.procesarPedidosPorIds',
+      });
+    }
+  }
+
+  private async syncMobileOrdersFacturados(idsFacturados: number[]) {
+    if (!idsFacturados.length) {
+      return;
+    }
+
+    const legacyDocumentsRepository = this.dataSourceSistemas.getRepository(
+      ClienteMobileOrderLegacyDocument,
+    );
+
+    const linkedDocuments = await legacyDocumentsRepository.find({
+      where: {
+        legacyDocId: In(idsFacturados),
+      },
+    });
+
+    if (!linkedDocuments.length) {
+      return;
+    }
+
+    const now = new Date();
+    for (const document of linkedDocuments) {
+      document.legacyEstado = 'F';
+      document.isFacturado = true;
+      document.facturadoAt = document.facturadoAt ?? now;
+    }
+
+    await legacyDocumentsRepository.save(linkedDocuments);
+
+    const affectedOrderIds = [...new Set(linkedDocuments.map((document) => document.orderId))];
+    for (const orderId of affectedOrderIds) {
+      const mobileOrder = await this.refreshMobileOrderLegacySummary(orderId);
+      if (
+        !mobileOrder
+        || !mobileOrder.allLegacyDocumentsInvoiced
+        || ![
+          ClienteMobileOrderStatus.PACKING,
+          ClienteMobileOrderStatus.ACCEPTED,
+        ].includes(mobileOrder.status)
+      ) {
+        continue;
+      }
+
+      await this.mobileOrderWorkflowService.changeOrderStatus({
+        orderId: mobileOrder.id,
+        nextStatus: ClienteMobileOrderStatus.READY_TO_SHIP,
+        source: 'sync',
+        changedBy: 'sincronizacion.verificarPedidosFacturados',
+        notifyCustomer: true,
+        metadataSource: 'sincronizacion.verificarPedidosFacturados',
+      });
+    }
+  }
+
+  private async syncMobileOrdersCancelados(idsCancelados: number[]) {
+    if (!idsCancelados.length) {
+      return;
+    }
+
+    const legacyDocumentsRepository = this.dataSourceSistemas.getRepository(
+      ClienteMobileOrderLegacyDocument,
+    );
+
+    const linkedDocuments = await legacyDocumentsRepository.find({
+      where: {
+        legacyDocId: In(idsCancelados),
+      },
+    });
+
+    if (!linkedDocuments.length) {
+      return;
+    }
+
+    for (const document of linkedDocuments) {
+      document.legacyEstado = 'C';
+      document.isFacturado = false;
+      document.facturadoAt = null;
+    }
+
+    await legacyDocumentsRepository.save(linkedDocuments);
+
+    const affectedOrderIds = [...new Set(linkedDocuments.map((document) => document.orderId))];
+    for (const orderId of affectedOrderIds) {
+      const mobileOrder = await this.refreshMobileOrderLegacySummary(orderId);
+      if (
+        !mobileOrder
+        || ![
+          ClienteMobileOrderStatus.SUBMITTED,
+          ClienteMobileOrderStatus.ACCEPTED,
+          ClienteMobileOrderStatus.PACKING,
+          ClienteMobileOrderStatus.READY_TO_SHIP,
+        ].includes(mobileOrder.status)
+      ) {
+        continue;
+      }
+
+      const orderDocuments = await legacyDocumentsRepository.find({
+        where: { orderId: mobileOrder.id },
+      });
+      const allLegacyDocumentsCancelled = orderDocuments.length > 0
+        && orderDocuments.every((document) => this.cleanNullableString(document.legacyEstado) === 'C');
+
+      if (!allLegacyDocumentsCancelled) {
+        continue;
+      }
+
+      await this.mobileOrderWorkflowService.changeOrderStatus({
+        orderId: mobileOrder.id,
+        nextStatus: ClienteMobileOrderStatus.CANCELLED,
+        source: 'sync',
+        changedBy: 'sincronizacion.verificarPedidosCancelados',
+        notifyCustomer: true,
+        metadataSource: 'sincronizacion.verificarPedidosCancelados',
+      });
+    }
+  }
+
+  private async refreshMobileOrderLegacySummary(orderId: number) {
+    const mobileOrdersRepository = this.dataSourceSistemas.getRepository(ClienteMobileOrder);
+    const legacyDocumentsRepository = this.dataSourceSistemas.getRepository(
+      ClienteMobileOrderLegacyDocument,
+    );
+
+    const documents = await legacyDocumentsRepository.find({
+      where: { orderId },
+    });
+
+    const totalDocuments = documents.length;
+    const allLegacyDocumentsInvoiced = totalDocuments > 0
+      && documents.every((document) => Boolean(document.isFacturado));
+
+    await mobileOrdersRepository.update(
+      { id: orderId },
+      {
+        legacyDocumentsCount: totalDocuments,
+        allLegacyDocumentsInvoiced,
+        lastLegacySyncAt: new Date(),
+      },
+    );
+
+    return mobileOrdersRepository.findOne({
+      where: { id: orderId },
+    });
+  }
+
+  private cleanNullableString(value: unknown) {
+    const normalized = String(value ?? '').trim();
+    return normalized || null;
   }
     
 }

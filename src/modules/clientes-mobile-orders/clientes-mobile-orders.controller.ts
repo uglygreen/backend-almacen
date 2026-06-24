@@ -141,6 +141,12 @@ export class ClientesMobileOrdersController {
     return this.clientesMobileOrdersService.getOrder(req.user.sub, id);
   }
 
+  @Get('orders/:id/tracking-timeline')
+  @ApiOperation({ summary: 'Obtiene la linea de tiempo de seguimiento de un pedido del cliente' })
+  getOrderTrackingTimeline(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.clientesMobileOrdersService.getOrderTrackingTimeline(req.user.sub, id);
+  }
+
   @Get('customers/me/addresses')
   @ApiOperation({ summary: 'Lista las direcciones disponibles del cliente autenticado' })
   getAddresses(@Req() req: any) {

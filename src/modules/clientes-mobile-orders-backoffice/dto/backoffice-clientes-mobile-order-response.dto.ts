@@ -278,6 +278,164 @@ export class BackofficeOrderStatusHistoryItemDto {
   createdAt: Date;
 }
 
+export class BackofficeLegacyDocumentDto {
+  @ApiProperty()
+  id: number;
+
+  @ApiProperty()
+  legacyDocId: number;
+
+  @ApiPropertyOptional()
+  pedidoId: number | null;
+
+  @ApiPropertyOptional()
+  numero: string | null;
+
+  @ApiPropertyOptional()
+  serie: string | null;
+
+  @ApiPropertyOptional()
+  folio: string | null;
+
+  @ApiPropertyOptional()
+  tipo: string | null;
+
+  @ApiPropertyOptional()
+  estado: string | null;
+
+  @ApiPropertyOptional()
+  nota: string | null;
+
+  @ApiPropertyOptional()
+  matchedReference: string | null;
+
+  @ApiProperty()
+  isFacturado: boolean;
+
+  @ApiProperty()
+  isCancelled: boolean;
+
+  @ApiProperty()
+  isActive: boolean;
+
+  @ApiPropertyOptional()
+  facturadoAt: Date | null;
+
+  @ApiPropertyOptional()
+  createdAt: Date | null;
+
+  @ApiPropertyOptional()
+  updatedAt: Date | null;
+}
+
+export class BackofficeLegacySummaryDto {
+  @ApiProperty()
+  totalDocuments: number;
+
+  @ApiProperty()
+  invoicedDocuments: number;
+
+  @ApiProperty()
+  cancelledDocuments: number;
+
+  @ApiProperty()
+  activeDocuments: number;
+
+  @ApiProperty()
+  pendingDocuments: number;
+
+  @ApiProperty()
+  allInvoiced: boolean;
+
+  @ApiProperty()
+  allCancelled: boolean;
+
+  @ApiProperty({ type: [String] })
+  invoiceFolios: string[];
+
+  @ApiPropertyOptional()
+  lastFacturadoAt: Date | null;
+}
+
+export class BackofficeTrackingTimelineItemDto {
+  @ApiProperty()
+  key: string;
+
+  @ApiProperty()
+  step: string;
+
+  @ApiProperty()
+  stepLabel: string;
+
+  @ApiProperty()
+  type: string;
+
+  @ApiProperty()
+  title: string;
+
+  @ApiPropertyOptional()
+  message: string | null;
+
+  @ApiPropertyOptional()
+  occurredAt: Date | null;
+
+  @ApiPropertyOptional()
+  status: string | null;
+
+  @ApiProperty()
+  source: string;
+
+  @ApiPropertyOptional()
+  changedBy: string | null;
+
+  @ApiProperty()
+  notifyCustomer: boolean;
+
+  @ApiProperty()
+  isCurrentStep: boolean;
+
+  @ApiProperty()
+  isCompletedStep: boolean;
+
+  @ApiProperty()
+  isTerminalStep: boolean;
+
+  @ApiPropertyOptional()
+  legacyDocId: number | null;
+
+  @ApiPropertyOptional()
+  pedidoId: number | null;
+
+  @ApiPropertyOptional()
+  folio: string | null;
+
+  @ApiProperty()
+  metadata: Record<string, any>;
+}
+
+export class BackofficeTrackingSummaryDto {
+  @ApiProperty()
+  currentStep: string;
+
+  @ApiProperty()
+  currentStepLabel: string;
+
+  @ApiProperty()
+  currentStatus: string;
+
+  @ApiProperty({ type: [String] })
+  completedSteps: string[];
+
+  @ApiPropertyOptional()
+  nextStep: string | null;
+
+  @ApiPropertyOptional()
+  nextStepLabel: string | null;
+
+  @ApiProperty()
+  isTerminal: boolean;
+}
+
 export class BackofficeSubmittedOrderListItemDto {
   @ApiProperty()
   id: number;
@@ -326,6 +484,18 @@ export class BackofficeSubmittedOrderDetailDto {
   @ApiPropertyOptional()
   nota: string | null;
 
+  @ApiPropertyOptional()
+  mobileReference: string | null;
+
+  @ApiProperty()
+  legacyDocumentsCount: number;
+
+  @ApiProperty()
+  allLegacyDocumentsInvoiced: boolean;
+
+  @ApiPropertyOptional()
+  lastLegacySyncAt: Date | null;
+
   @ApiProperty()
   customer: BackofficeCustomerDto;
 
@@ -346,4 +516,19 @@ export class BackofficeSubmittedOrderDetailDto {
 
   @ApiProperty({ type: [BackofficeOrderStatusHistoryItemDto] })
   history: BackofficeOrderStatusHistoryItemDto[];
+
+  @ApiProperty({ type: [BackofficeLegacyDocumentDto] })
+  legacyDocuments: BackofficeLegacyDocumentDto[];
+
+  @ApiProperty({ type: [BackofficeLegacyDocumentDto] })
+  legacyInvoices: BackofficeLegacyDocumentDto[];
+
+  @ApiProperty()
+  legacySummary: BackofficeLegacySummaryDto;
+
+  @ApiProperty({ type: [BackofficeTrackingTimelineItemDto] })
+  trackingTimeline: BackofficeTrackingTimelineItemDto[];
+
+  @ApiProperty()
+  trackingSummary: BackofficeTrackingSummaryDto;
 }

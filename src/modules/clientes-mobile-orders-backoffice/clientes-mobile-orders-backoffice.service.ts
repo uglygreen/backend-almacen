@@ -1,15 +1,20 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Not, Repository } from 'typeorm';
-import { Cliente, CustomerNotificationType } from '../../entities';
+import { Cliente } from '../../entities';
 import { CorreoLegacy } from '../../entities/correo-legacy.entity';
 import { DomLegacy } from '../../entities/dom-legacy.entity';
 import { Personal } from '../../entities/personal.entity';
 import { ClientesCreditoService } from '../clientes-credito/clientes-credito.service';
-import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
+import { ClientesMobileOrderWorkflowService } from '../clientes-mobile-orders/clientes-mobile-order-workflow.service';
+import { ClienteMobileOrderLegacyDocument } from '../clientes-mobile-orders/entities/cliente-mobile-order-legacy-document.entity';
 import { ClienteMobileOrderStatusHistory } from '../clientes-mobile-orders/entities/cliente-mobile-order-status-history.entity';
 import { ClienteMobileOrder, ClienteMobileOrderStatus } from '../clientes-mobile-orders/entities/cliente-mobile-order.entity';
 import { ClienteMobileOrderItem } from '../clientes-mobile-orders/entities/cliente-mobile-order-item.entity';
+import {
+  buildMobileOrderTrackingSummary,
+  buildMobileOrderTrackingTimeline,
+} from '../clientes-mobile-orders/utils/mobile-order-tracking-timeline.util';
 import {
   BackofficeCreditDto,
   BackofficeCustomerAddressDto,
@@ -17,6 +22,8 @@ import {
   BackofficeOrderBillingDto,
   BackofficeOrderDeliveryDto,
   BackofficeOrderItemDto,
+  BackofficeLegacyDocumentDto,
+  BackofficeLegacySummaryDto,
   BackofficeOrderStatusHistoryItemDto,
   BackofficeOrderSummaryDto,
   BackofficeSubmittedOrderDetailDto,
@@ -27,8 +34,6 @@ import { UpdateClientesMobileOrderStatusDto } from './dto/update-clientes-mobile
 
 @Injectable()
 export class ClientesMobileOrdersBackofficeService {
-  private readonly logger = new Logger(ClientesMobileOrdersBackofficeService.name);
-
   constructor(
     @InjectRepository(ClienteMobileOrder)
     private readonly ordersRepository: Repository<ClienteMobileOrder>,
@@ -37,7 +42,7 @@ export class ClientesMobileOrdersBackofficeService {
     @InjectRepository(Cliente, 'legacy_db')
     private readonly clientesRepository: Repository<Cliente>,
     private readonly clientesCreditoService: ClientesCreditoService,
-    private readonly customerNotificationsService: CustomerNotificationsService,
+    private readonly mobileOrderWorkflowService: ClientesMobileOrderWorkflowService,
   ) {}
 
   async listSubmittedOrders(query: ListClientesMobileOrdersBackofficeDto) {
@@ -86,108 +91,20 @@ export class ClientesMobileOrdersBackofficeService {
   }
 
   async updateOrderStatus(orderId: number, dto: UpdateClientesMobileOrderStatusDto) {
-    const order = await this.findBackofficeOrderById(orderId);
-    const previousStatus = order.status;
-    const nextStatus = dto.status;
-    const notifyCustomer = dto.notifyCustomer ?? true;
-    const changedBy = this.cleanNullableString(dto.changedBy) ?? 'backoffice';
-    const customMessage = this.cleanNullableString(dto.message);
+    const result = await this.mobileOrderWorkflowService.changeOrderStatus({
+      orderId,
+      nextStatus: dto.status,
+      changedBy: dto.changedBy,
+      message: dto.message,
+      notifyCustomer: dto.notifyCustomer,
+      source: 'manual',
+      metadataSource: 'clientes_mobile_orders_backoffice',
+    });
 
-    if (previousStatus === nextStatus) {
-      const history = await this.findOrderHistory(order.id);
-      return {
-        updated: false,
-        reason: 'STATUS_UNCHANGED',
-        order: {
-          id: order.id,
-          previousStatus,
-          status: order.status,
-          updatedAt: order.updatedAt,
-        },
-        history: history.map((item) => this.mapHistoryItem(item)),
-        notification: {
-          requested: false,
-          sent: false,
-          id: null,
-        },
-      };
-    }
-
-    this.assertValidStatusTransition(previousStatus, nextStatus);
-
-    order.status = nextStatus;
-    const savedOrder = await this.ordersRepository.save(order);
-
-    const historyEntry = await this.orderStatusHistoryRepository.save(
-      this.orderStatusHistoryRepository.create({
-        orderId: savedOrder.id,
-        previousStatus,
-        status: nextStatus,
-        message: customMessage ?? this.buildDefaultStatusMessage(savedOrder, nextStatus),
-        changedBy,
-        notifyCustomer,
-        notificationId: null,
-      }),
-    );
-
-    let notificationSummary = {
-      requested: notifyCustomer,
-      sent: false,
-      id: null as number | null,
-      status: null as string | null,
-      errorCode: null as string | null,
-      errorMessage: null as string | null,
-    };
-
-    if (notifyCustomer) {
-      try {
-        const notificationPayload = this.buildStatusNotificationPayload(savedOrder, historyEntry);
-        const notificationResult = await this.customerNotificationsService.dispatchCustomerNotification(
-          notificationPayload,
-        );
-
-        const notificationId = notificationResult.notification?.id ?? null;
-        if (notificationId) {
-          historyEntry.notificationId = notificationId;
-          await this.orderStatusHistoryRepository.save(historyEntry);
-        }
-
-        notificationSummary = {
-          requested: true,
-          sent: Boolean(notificationResult.delivered),
-          id: notificationId,
-          status: notificationResult.notification?.status ?? null,
-          errorCode: notificationResult.notification?.errorCode ?? null,
-          errorMessage: notificationResult.notification?.errorMessage ?? null,
-        };
-      } catch (error: any) {
-        this.logger.error(
-          `No se pudo notificar el cambio de estatus del pedido ${savedOrder.id}: ${error?.message ?? error}`,
-        );
-
-        notificationSummary = {
-          requested: true,
-          sent: false,
-          id: null,
-          status: 'failed',
-          errorCode: error?.code ?? 'ORDER_STATUS_NOTIFICATION_ERROR',
-          errorMessage: error?.message ?? 'No se pudo enviar la notificación al cliente',
-        };
-      }
-    }
-
-    const history = await this.findOrderHistory(savedOrder.id);
     return {
-      updated: true,
-      order: {
-        id: savedOrder.id,
-        previousStatus,
-        status: savedOrder.status,
-        updatedAt: savedOrder.updatedAt,
-      },
-      historyEntry: this.mapHistoryItem(historyEntry),
-      history: history.map((item) => this.mapHistoryItem(item)),
-      notification: notificationSummary,
+      ...result,
+      historyEntry: result.historyEntry ? this.mapHistoryItem(result.historyEntry) : null,
+      history: (result.history ?? []).map((item) => this.mapHistoryItem(item)),
     };
   }
 
@@ -249,6 +166,8 @@ export class ClientesMobileOrdersBackofficeService {
     creditSource: any,
     history: ClienteMobileOrderStatusHistory[],
   ): BackofficeSubmittedOrderDetailDto {
+    const legacyDocuments = (order.legacyDocuments ?? []).map((item) => this.mapLegacyDocument(item));
+
     return {
       id: order.id,
       status: order.status,
@@ -256,6 +175,10 @@ export class ClientesMobileOrdersBackofficeService {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       nota: this.cleanNullableString(order.nota),
+      mobileReference: this.cleanNullableString(order.mobileReference),
+      legacyDocumentsCount: this.toNumber(order.legacyDocumentsCount),
+      allLegacyDocumentsInvoiced: Boolean(order.allLegacyDocumentsInvoiced),
+      lastLegacySyncAt: order.lastLegacySyncAt,
       customer: this.mapCustomer(cliente, order),
       billing: this.mapBilling(order),
       delivery: this.mapDelivery(order),
@@ -263,6 +186,21 @@ export class ClientesMobileOrdersBackofficeService {
       credit: this.mapCredit(creditSource),
       items: (order.items ?? []).map((item) => this.mapItem(item)),
       history: history.map((item) => this.mapHistoryItem(item)),
+      legacyDocuments,
+      legacyInvoices: legacyDocuments.filter((item) => item.isFacturado),
+      legacySummary: this.buildLegacySummary(legacyDocuments),
+      trackingSummary: buildMobileOrderTrackingSummary(order.status),
+      trackingTimeline: buildMobileOrderTrackingTimeline({
+        order: {
+          id: order.id,
+          status: order.status,
+          createdAt: order.createdAt,
+          submittedAt: order.submittedAt,
+          deliveryType: order.deliveryType,
+        },
+        history: history.map((item) => this.mapHistoryForTracking(item)),
+        legacyDocuments,
+      }),
     };
   }
 
@@ -340,6 +278,69 @@ export class ClientesMobileOrdersBackofficeService {
       notifyCustomer: Boolean(item.notifyCustomer),
       notificationId: item.notificationId ?? null,
       createdAt: item.createdAt,
+    };
+  }
+
+  private mapHistoryForTracking(item: ClienteMobileOrderStatusHistory) {
+    return {
+      id: item.id,
+      previousStatus: item.previousStatus,
+      status: item.status,
+      message: this.cleanNullableString(item.message),
+      changedBy: this.cleanNullableString(item.changedBy),
+      notifyCustomer: Boolean(item.notifyCustomer),
+      createdAt: item.createdAt,
+    };
+  }
+
+  private mapLegacyDocument(
+    item: ClienteMobileOrderLegacyDocument,
+  ): BackofficeLegacyDocumentDto {
+    return {
+      id: item.id,
+      legacyDocId: item.legacyDocId,
+      pedidoId: item.pedidoId ?? null,
+      numero: this.cleanNullableString(item.legacyNumero),
+      serie: this.cleanNullableString(item.legacySerie),
+      folio: this.buildLegacyDocumentFolio(item.legacySerie, item.legacyNumero),
+      tipo: this.cleanNullableString(item.legacyTipo),
+      estado: this.cleanNullableString(item.legacyEstado),
+      nota: this.cleanNullableString(item.legacyNota),
+      matchedReference: this.cleanNullableString(item.matchedReference),
+      isFacturado: Boolean(item.isFacturado),
+      isCancelled: this.cleanNullableString(item.legacyEstado) === 'C',
+      isActive: this.cleanNullableString(item.legacyEstado) !== 'C',
+      facturadoAt: item.facturadoAt ?? null,
+      createdAt: item.createdAt ?? null,
+      updatedAt: item.updatedAt ?? null,
+    };
+  }
+
+  private buildLegacySummary(
+    documents: BackofficeLegacyDocumentDto[],
+  ): BackofficeLegacySummaryDto {
+    const totalDocuments = documents.length;
+    const invoicedDocuments = documents.filter((document) => document.isFacturado);
+    const cancelledDocuments = documents.filter((document) => document.isCancelled);
+    const activeDocuments = documents.filter((document) => document.isActive);
+    const invoiceFolios = invoicedDocuments
+      .map((document) => document.folio)
+      .filter((folio): folio is string => Boolean(folio));
+    const lastFacturadoAt = invoicedDocuments
+      .map((document) => document.facturadoAt)
+      .filter((date): date is Date => date instanceof Date)
+      .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+
+    return {
+      totalDocuments,
+      invoicedDocuments: invoicedDocuments.length,
+      cancelledDocuments: cancelledDocuments.length,
+      activeDocuments: activeDocuments.length,
+      pendingDocuments: totalDocuments - invoicedDocuments.length - cancelledDocuments.length,
+      allInvoiced: totalDocuments > 0 && invoicedDocuments.length === totalDocuments,
+      allCancelled: totalDocuments > 0 && cancelledDocuments.length === totalDocuments,
+      invoiceFolios,
+      lastFacturadoAt,
     };
   }
 
@@ -464,9 +465,12 @@ export class ClientesMobileOrdersBackofficeService {
         id: orderId,
         status: Not(ClienteMobileOrderStatus.DRAFT),
       },
-      relations: ['items'],
+      relations: ['items', 'legacyDocuments'],
       order: {
         items: {
+          id: 'ASC',
+        },
+        legacyDocuments: {
           id: 'ASC',
         },
       },
@@ -489,118 +493,18 @@ export class ClientesMobileOrdersBackofficeService {
     });
   }
 
-  private assertValidStatusTransition(
-    currentStatus: ClienteMobileOrderStatus,
-    nextStatus: ClienteMobileOrderStatus,
+  private buildLegacyDocumentFolio(
+    serie: string | null | undefined,
+    numero: string | null | undefined,
   ) {
-    const allowedTransitions: Record<ClienteMobileOrderStatus, ClienteMobileOrderStatus[]> = {
-      [ClienteMobileOrderStatus.DRAFT]: [],
-      [ClienteMobileOrderStatus.SUBMITTED]: [
-        ClienteMobileOrderStatus.ACCEPTED,
-        ClienteMobileOrderStatus.CANCELLED,
-      ],
-      [ClienteMobileOrderStatus.ACCEPTED]: [
-        ClienteMobileOrderStatus.PACKING,
-        ClienteMobileOrderStatus.READY_TO_SHIP,
-        ClienteMobileOrderStatus.CANCELLED,
-      ],
-      [ClienteMobileOrderStatus.PACKING]: [
-        ClienteMobileOrderStatus.READY_TO_SHIP,
-        ClienteMobileOrderStatus.CANCELLED,
-      ],
-      [ClienteMobileOrderStatus.READY_TO_SHIP]: [
-        ClienteMobileOrderStatus.IN_ROUTE,
-        ClienteMobileOrderStatus.DELIVERED,
-        ClienteMobileOrderStatus.CANCELLED,
-      ],
-      [ClienteMobileOrderStatus.IN_ROUTE]: [
-        ClienteMobileOrderStatus.DELIVERED,
-        ClienteMobileOrderStatus.CANCELLED,
-      ],
-      [ClienteMobileOrderStatus.DELIVERED]: [],
-      [ClienteMobileOrderStatus.CANCELLED]: [],
-    };
+    const cleanSerie = this.cleanNullableString(serie);
+    const cleanNumero = this.cleanNullableString(numero);
 
-    const allowedNextStatuses = allowedTransitions[currentStatus] ?? [];
-    if (!allowedNextStatuses.includes(nextStatus)) {
-      throw new BadRequestException(
-        `No se permite cambiar el estatus de ${currentStatus} a ${nextStatus}`,
-      );
+    if (cleanSerie && cleanNumero) {
+      return `${cleanSerie}-${cleanNumero}`;
     }
-  }
 
-  private buildStatusNotificationPayload(
-    order: ClienteMobileOrder,
-    historyEntry: ClienteMobileOrderStatusHistory,
-  ) {
-    const title = this.buildStatusNotificationTitle(order.status);
-    const body = historyEntry.message ?? this.buildDefaultStatusMessage(order, order.status);
-    const dedupeKey = `${CustomerNotificationType.ORDER_STATUS_UPDATED}:${order.id}:${historyEntry.id}`;
-
-    return {
-      customerId: order.clienteId,
-      type: CustomerNotificationType.ORDER_STATUS_UPDATED,
-      title,
-      body,
-      dedupeKey,
-      scheduledFor: new Date(),
-      metadata: {
-        source: 'clientes_mobile_orders_backoffice',
-        orderId: order.id,
-        previousStatus: historyEntry.previousStatus,
-        status: historyEntry.status,
-        changedBy: historyEntry.changedBy,
-      },
-      data: {
-        source: 'clientes_mobile_orders_backoffice',
-        orderId: order.id,
-        status: historyEntry.status,
-        previousStatus: historyEntry.previousStatus,
-      },
-    };
-  }
-
-  private buildStatusNotificationTitle(status: ClienteMobileOrderStatus) {
-    switch (status) {
-      case ClienteMobileOrderStatus.ACCEPTED:
-        return 'Tu pedido fue aceptado';
-      case ClienteMobileOrderStatus.PACKING:
-        return 'Tu pedido esta en surtido';
-      case ClienteMobileOrderStatus.READY_TO_SHIP:
-        return 'Tu pedido esta listo';
-      case ClienteMobileOrderStatus.IN_ROUTE:
-        return 'Tu pedido va en camino';
-      case ClienteMobileOrderStatus.DELIVERED:
-        return 'Tu pedido fue entregado';
-      case ClienteMobileOrderStatus.CANCELLED:
-        return 'Tu pedido fue cancelado';
-      default:
-        return 'Actualizacion de tu pedido';
-    }
-  }
-
-  private buildDefaultStatusMessage(
-    order: ClienteMobileOrder,
-    status: ClienteMobileOrderStatus,
-  ) {
-    switch (status) {
-      case ClienteMobileOrderStatus.ACCEPTED:
-        return `Tu pedido #${order.id} fue aceptado y pronto comenzaremos a prepararlo.`;
-      case ClienteMobileOrderStatus.PACKING:
-        return `Tu pedido #${order.id} ya esta siendo surtido en almacen.`;
-      case ClienteMobileOrderStatus.READY_TO_SHIP:
-        return order.deliveryType === 'PICKUP'
-          ? `Tu pedido #${order.id} ya esta listo para recoger en oficina.`
-          : `Tu pedido #${order.id} ya esta listo para envio.`;
-      case ClienteMobileOrderStatus.IN_ROUTE:
-        return `Tu pedido #${order.id} ya va en camino.`;
-      case ClienteMobileOrderStatus.DELIVERED:
-        return `Tu pedido #${order.id} fue entregado correctamente.`;
-      case ClienteMobileOrderStatus.CANCELLED:
-        return `Tu pedido #${order.id} fue cancelado.`;
-      default:
-        return `El estatus de tu pedido #${order.id} cambio a ${status}.`;
-    }
+    return cleanSerie || cleanNumero || null;
   }
 
   private normalizeNumeroCliente(value: string | null | undefined) {
