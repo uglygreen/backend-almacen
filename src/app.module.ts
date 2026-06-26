@@ -6,7 +6,30 @@ import { PedidosModule } from './pedidos/pedidos.module';
 import { SincronizacionModule } from './sincronizacion/sincronizacion.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AlmLegacy, AlmacenUser, AlmacenUserBaseConfig, ClienteCreditoExcepcion, ClienteMobileOtp, ClienteMobileSession, ControlSincronizacion, CorreoLegacy, CustomerNotification, DesLegacy, DetallePedido, DeviceToken, DocLegacy, DomLegacy, InvLegacy, NomAlmLegacy, PagDocLegacy, Pedido, Producto, ProductoCodigo, Surtido, UnidadLegacy } from './entities';
+import {
+  AlmLegacy,
+  AlmacenUser,
+  AlmacenUserBaseConfig,
+  ClienteCreditoExcepcion,
+  ClienteMobileOtp,
+  ClienteMobileSession,
+  ControlSincronizacion,
+  CorreoLegacy,
+  CustomerNotification,
+  DesLegacy,
+  DetallePedido,
+  DeviceToken,
+  DocLegacy,
+  DomLegacy,
+  InvLegacy,
+  NomAlmLegacy,
+  PagDocLegacy,
+  Pedido,
+  Producto,
+  ProductoCodigo,
+  Surtido,
+  UnidadLegacy,
+} from './entities';
 import { MetricasModule } from './metricas/metricas.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { InventarioModule } from './inventario/inventario.module';
@@ -16,7 +39,11 @@ import { ConfigAlmacenModule } from './config-almacen/config-almacen.module';
 import { ConfigAlmacen } from './entities/config-almacen.entity';
 
 import { GarantiasModule } from './garantias/garantias.module';
-import { Garantia, HistorialEstatusGarantia, MediaGarantia } from './entities/garantia.entity';
+import {
+  Garantia,
+  HistorialEstatusGarantia,
+  MediaGarantia,
+} from './entities/garantia.entity';
 import { EventsModule } from './events/events.module';
 import { Personal } from './entities/personal.entity';
 import { PersonalModule } from './personal/personal.module';
@@ -44,6 +71,9 @@ import { ClienteMobileOrder } from './modules/clientes-mobile-orders/entities/cl
 import { ClienteMobileOrderLegacyDocument } from './modules/clientes-mobile-orders/entities/cliente-mobile-order-legacy-document.entity';
 import { ClienteMobileOrderItem } from './modules/clientes-mobile-orders/entities/cliente-mobile-order-item.entity';
 import { ClienteMobileOrderStatusHistory } from './modules/clientes-mobile-orders/entities/cliente-mobile-order-status-history.entity';
+import { CatalogoPromoMes } from './modules/productos-promo-mes/entities/catalogo-promo-mes.entity';
+import { ProductoPromoMes } from './modules/productos-promo-mes/entities/producto-promo-mes.entity';
+import { ProductosPromoMesModule } from './modules/productos-promo-mes/productos-promo-mes.module';
 import { PersonalBaseAlmacenModule } from './modules/personal-base-almacen/personal-base-almacen.module';
 import { ThermalLabelsAlmacenModule } from './modules/thermal-labels-almacen/thermal-labels-almacen.module';
 import { CustomerNotificationsModule } from './modules/customer-notifications/customer-notifications.module';
@@ -62,11 +92,11 @@ function requiredEnv(key: string) {
   imports: [
     // 1. Activar Cron Jobs
     ScheduleModule.forRoot(),
-    
+
     // 1.5 Servir archivos estáticos
     ServeStaticModule.forRoot({
       rootPath: envString('UPLOADS_ROOT', join(process.cwd(), 'uploads')),
-      serveRoot: '/uploads', 
+      serveRoot: '/uploads',
     }),
 
     // 2. Conexión Principal (Escritura - Sistemas)
@@ -78,7 +108,32 @@ function requiredEnv(key: string) {
       username: requiredEnv('DB_USER'),
       password: requiredEnv('DB_PASSWORD'),
       database: requiredEnv('DB_NAME'),
-      entities: [Pedido, DetallePedido, Producto, AlmacenUser, AlmacenUserBaseConfig, ControlSincronizacion, ProductoCodigo, Surtido, ConfigAlmacen, Garantia, HistorialEstatusGarantia, MediaGarantia, AuditEvent, ClienteCreditoExcepcion, ClienteMobileOtp, ClienteMobileSession, ClienteMobileOrder, ClienteMobileOrderItem, ClienteMobileOrderStatusHistory, ClienteMobileOrderLegacyDocument, DeviceToken, CustomerNotification],
+      entities: [
+        Pedido,
+        DetallePedido,
+        Producto,
+        AlmacenUser,
+        AlmacenUserBaseConfig,
+        ControlSincronizacion,
+        ProductoCodigo,
+        Surtido,
+        ConfigAlmacen,
+        Garantia,
+        HistorialEstatusGarantia,
+        MediaGarantia,
+        AuditEvent,
+        ClienteCreditoExcepcion,
+        ClienteMobileOtp,
+        ClienteMobileSession,
+        ClienteMobileOrder,
+        ClienteMobileOrderItem,
+        ClienteMobileOrderStatusHistory,
+        ClienteMobileOrderLegacyDocument,
+        DeviceToken,
+        CustomerNotification,
+        CatalogoPromoMes,
+        ProductoPromoMes,
+      ],
       synchronize: false, // ¡Cuidado en producción!
     }),
 
@@ -91,7 +146,19 @@ function requiredEnv(key: string) {
       username: envString('LEGACY_DB_USER', requiredEnv('DB_USER')),
       password: envString('LEGACY_DB_PASSWORD', requiredEnv('DB_PASSWORD')),
       database: requiredEnv('LEGACY_DB_NAME'),
-      entities: [Cliente, Personal, DocLegacy, PagDocLegacy, DomLegacy, InvLegacy, DesLegacy, AlmLegacy, NomAlmLegacy, CorreoLegacy, UnidadLegacy],
+      entities: [
+        Cliente,
+        Personal,
+        DocLegacy,
+        PagDocLegacy,
+        DomLegacy,
+        InvLegacy,
+        DesLegacy,
+        AlmLegacy,
+        NomAlmLegacy,
+        CorreoLegacy,
+        UnidadLegacy,
+      ],
       synchronize: false,
     }),
 
@@ -104,7 +171,12 @@ function requiredEnv(key: string) {
       username: requiredEnv('ZKTECO_DB_USER'),
       password: requiredEnv('ZKTECO_DB_PASSWORD'),
       database: requiredEnv('ZKTECO_DB_NAME'),
-      entities: [IclockTransaction, PersonnelEmployee, PersonnelPosition, PersonnelDepartment],
+      entities: [
+        IclockTransaction,
+        PersonnelEmployee,
+        PersonnelPosition,
+        PersonnelDepartment,
+      ],
       synchronize: false, // La base de datos ya existe, no sincronizar
     }),
 
@@ -119,7 +191,12 @@ function requiredEnv(key: string) {
       username: requiredEnv('ZKTECO_TEQUIS_DB_USER'),
       password: requiredEnv('ZKTECO_TEQUIS_DB_PASSWORD'),
       database: requiredEnv('ZKTECO_TEQUIS_DB_NAME'),
-      entities: [IclockTransaction, PersonnelEmployee, PersonnelPosition, PersonnelDepartment],
+      entities: [
+        IclockTransaction,
+        PersonnelEmployee,
+        PersonnelPosition,
+        PersonnelDepartment,
+      ],
       synchronize: false,
     }),
 
@@ -148,11 +225,12 @@ function requiredEnv(key: string) {
     ClientesMobileModule,
     ClientesMobileOrdersModule,
     ClientesMobileOrdersBackofficeModule,
+    ProductosPromoMesModule,
     PersonalBaseAlmacenModule,
     ThermalLabelsAlmacenModule,
     CustomerNotificationsModule,
   ],
-  controllers: [ ],
+  controllers: [],
   providers: [],
 })
 export class AppModule {}

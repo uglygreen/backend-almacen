@@ -4,7 +4,6 @@ export enum CustomerNotificationType {
   TEST_PUSH = 'test_push',
   VISIT_DAY = 'visit_day',
   OVERDUE_INVOICES = 'overdue_invoices',
-  ORDER_STATUS_UPDATED = 'order_status_updated',
 }
 
 export enum CustomerNotificationStatus {
