@@ -15,12 +15,18 @@ import { CatalogoPromoMes } from './entities/catalogo-promo-mes.entity';
 import { ProductoPromoMes } from './entities/producto-promo-mes.entity';
 
 type LegacyProductoMes = {
-  articuloId: number;
+  id: number;
+  codigo: string | null;
   clave: string | null;
-  codigoProveedor: string | null;
   descripcion: string | null;
   marca: string | null;
   imagen: string | null;
+  imagenMarca: string | null;
+  precio: number;
+  iva: number;
+  lote: number;
+  descuento: number;
+  precioConDescuento: number;
 };
 
 @Injectable()
@@ -347,13 +353,29 @@ export class ProductosPromoMesService {
     const rows = await this.legacyDataSource.query(
       `
         SELECT
-          inv.ARTICULOID AS articuloId,
+          inv.ARTICULOID AS id,
+          TRIM(COALESCE(inv.CLVPROV, '')) AS codigo,
           TRIM(COALESCE(inv.CLAVE, '')) AS clave,
-          TRIM(COALESCE(inv.CLVPROV, '')) AS codigoProveedor,
           TRIM(COALESCE(inv.DESCRIPCIO, '')) AS descripcion,
           TRIM(COALESCE(inv.XXMARCA, '')) AS marca,
-          TRIM(COALESCE(inv.XIMAGEN2, '')) AS imagen
+          TRIM(COALESCE(inv.XIMAGEN2, '')) AS imagen,
+          TRIM(COALESCE(inv.XMCA_IMAG, '')) AS imagenMarca,
+          IFNULL(ROUND((pre.PRECIO + (pre.PRECIO * (pre.PIMPUESTO / 100))), 2), 0) AS precio,
+          IFNULL(pre.PIMPUESTO, 0) AS iva,
+          IFNULL(inv.LOTE, 0) AS lote,
+          IFNULL(inv.INVDESCUENTO, 0) AS descuento,
+          IFNULL(
+            ROUND(
+              (pre.PRECIO + (pre.PRECIO * (pre.PIMPUESTO / 100))) * (1 - (IFNULL(inv.INVDESCUENTO, 0) / 100)),
+              2
+            ),
+            0
+          ) AS precioConDescuento
         FROM INV inv
+        LEFT JOIN preciofinal pre
+          ON inv.ARTICULOID = pre.ARTICULOID
+          AND inv.UNIVENID = pre.UNIDADID
+          AND pre.NPRECIO = 1
         WHERE TRIM(COALESCE(inv.CLAVE, '')) IN (${placeholders})
            OR TRIM(COALESCE(inv.CLVPROV, '')) IN (${placeholders})
       `,
@@ -362,15 +384,21 @@ export class ProductosPromoMesService {
 
     for (const row of rows) {
       const legacy: LegacyProductoMes = {
-        articuloId: this.toNumber(row.articuloId),
+        id: this.toNumber(row.id),
+        codigo: this.cleanNullableString(row.codigo),
         clave: this.cleanNullableString(row.clave),
-        codigoProveedor: this.cleanNullableString(row.codigoProveedor),
         descripcion: this.cleanNullableString(row.descripcion),
         marca: this.cleanNullableString(row.marca),
         imagen: this.buildCatalogImageUrl(row.imagen),
+        imagenMarca: this.buildCatalogImageUrl(row.imagenMarca),
+        precio: this.toMoney(row.precio),
+        iva: this.toNumber(row.iva),
+        lote: this.toNumber(row.lote),
+        descuento: this.toNumber(row.descuento),
+        precioConDescuento: this.toMoney(row.precioConDescuento),
       };
 
-      const candidateCodes = [legacy.clave, legacy.codigoProveedor]
+      const candidateCodes = [legacy.clave, legacy.codigo]
         .map((code) => this.cleanNullableString(code))
         .filter((code): code is string => Boolean(code));
 
@@ -417,12 +445,18 @@ export class ProductosPromoMesService {
       paginaCatalogo: producto.paginaCatalogo,
       fueraDeCatalogo: producto.fueraDeCatalogo,
       legacy: {
-        articuloId: legacy.articuloId,
+        id: legacy.id,
+        codigo: legacy.codigo,
         clave: legacy.clave,
-        codigoProveedor: legacy.codigoProveedor,
         descripcion: legacy.descripcion,
         marca: legacy.marca,
         imagen: legacy.imagen,
+        imagenMarca: legacy.imagenMarca,
+        precio: legacy.precio,
+        iva: legacy.iva,
+        lote: legacy.lote,
+        descuento: legacy.descuento,
+        precioConDescuento: legacy.precioConDescuento,
       },
     };
   }
@@ -527,5 +561,9 @@ export class ProductosPromoMesService {
 
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : 0;
+  }
+
+  private toMoney(value: string | number | null | undefined) {
+    return Number(this.toNumber(value).toFixed(2));
   }
 }
