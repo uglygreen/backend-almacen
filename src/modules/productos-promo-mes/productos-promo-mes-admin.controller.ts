@@ -21,7 +21,6 @@ import { ProductosPromoMesService } from './productos-promo-mes.service';
 
 @ApiTags('Productos Promo Mes')
 @Controller('almacen/v1/productos-promo-mes')
-@UseGuards(AuthAlmacenGuard)
 export class ProductosPromoMesAdminController {
   constructor(
     private readonly productosPromoMesService: ProductosPromoMesService,
