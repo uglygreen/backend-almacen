@@ -162,9 +162,6 @@ export class DocLegacy {
   @Column({ name: 'NOTA', type: 'varchar', length: 200, nullable: true })
   nota: string;
 
-  @Column({ name: 'MODIFICADO', type: 'char', length: 1, nullable: true })
-  modificado: string;
-
   @Column({ name: 'DOCRELID', type: 'int', unsigned: true, nullable: true })
   docRelId: number;
 
