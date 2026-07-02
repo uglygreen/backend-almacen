@@ -37,9 +37,6 @@ export class AlmLegacy {
   @Column({ name: 'CAMBIADO', type: 'timestamp', nullable: true })
   cambiado: Date;
 
-  @Column({ name: 'MODIFICADO', type: 'char', length: 1, nullable: true })
-  modificado: string;
-
   @Column({ name: 'APARTADO', type: 'decimal', precision: 10, scale: 3, nullable: true })
   apartado: number;
 

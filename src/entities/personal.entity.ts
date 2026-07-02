@@ -42,9 +42,6 @@ export class Personal {
   @Column({ name: 'DIAS', type: 'char', length: 7, default: '' })
   dias: string;
 
-  @Column({ name: 'MODIFICADO', type: 'char', length: 1, default: '' })
-  modificado: string;
-
   @Column({ name: 'CAJA', type: 'smallint', unsigned: true, default: 0 })
   caja: number;
 
