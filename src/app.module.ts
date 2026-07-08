@@ -13,6 +13,8 @@ import {
   ClienteCreditoExcepcion,
   ClienteMobileOtp,
   ClienteMobileSession,
+  CfdLegacy,
+  CompagLegacy,
   ControlSincronizacion,
   CorreoLegacy,
   CustomerNotification,
@@ -24,6 +26,7 @@ import {
   InvLegacy,
   NomAlmLegacy,
   PagDocLegacy,
+  PagoLegacy,
   Pedido,
   Producto,
   ProductoCodigo,
@@ -65,6 +68,7 @@ import { AuditEvent } from './modules/audit-almacen/entities/audit-event.entity'
 import { HistoricalAlmacenModule } from './modules/historical-almacen/historical-almacen.module';
 import { ClientesCreditoModule } from './modules/clientes-credito/clientes-credito.module';
 import { ClientesMobileModule } from './modules/clientes-mobile/clientes-mobile.module';
+import { ClientesMobileCobranzaModule } from './modules/clientes-mobile-cobranza/clientes-mobile-cobranza.module';
 import { ClientesMobileOrdersModule } from './modules/clientes-mobile-orders/clientes-mobile-orders.module';
 import { ClientesMobileOrdersBackofficeModule } from './modules/clientes-mobile-orders-backoffice/clientes-mobile-orders-backoffice.module';
 import { ClienteMobileOrder } from './modules/clientes-mobile-orders/entities/cliente-mobile-order.entity';
@@ -151,6 +155,9 @@ function requiredEnv(key: string) {
         Personal,
         DocLegacy,
         PagDocLegacy,
+        PagoLegacy,
+        CfdLegacy,
+        CompagLegacy,
         DomLegacy,
         InvLegacy,
         DesLegacy,
@@ -223,6 +230,7 @@ function requiredEnv(key: string) {
     HistoricalAlmacenModule,
     ClientesCreditoModule,
     ClientesMobileModule,
+    ClientesMobileCobranzaModule,
     ClientesMobileOrdersModule,
     ClientesMobileOrdersBackofficeModule,
     ProductosPromoMesModule,

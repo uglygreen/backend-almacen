@@ -295,5 +295,6 @@ export * from './dom-legacy.entity';
 export * from './garantia.entity';
 export * from './inv-legacy.entity';
 export * from './nomalm-legacy.entity';
+export * from './pagos-legacy.entity';
 export * from './personal.entity';
 export * from './unidad-legacy.entity';

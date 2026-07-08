@@ -1,5 +1,8 @@
 import { Entity, Column, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import type { Relation } from 'typeorm';
 import { DesLegacy } from './des-legacy.entity';
+import { DocLegacy } from './doc-legacy.entity';
+import { PagoLegacy } from './pagos-legacy.entity';
 
 @Entity('PER') // Nombre exacto de la tabla en tu base de datos
 export class Personal {
@@ -297,5 +300,25 @@ export class Personal {
   @OneToMany(() => DesLegacy, (detalle) => detalle.emisorDetalle, {
     createForeignKeyConstraints: false,
   })
-  detallesEmitidosDocumento: DesLegacy[];
+  detallesEmitidosDocumento: Relation<DesLegacy[]>;
+
+  @OneToMany(() => DocLegacy, (documento) => documento.emisorDetalle, {
+    createForeignKeyConstraints: false,
+  })
+  documentosEmitidosLegacy: Relation<DocLegacy[]>;
+
+  @OneToMany(() => DocLegacy, (documento) => documento.vendedorDetalle, {
+    createForeignKeyConstraints: false,
+  })
+  documentosVendidosLegacy: Relation<DocLegacy[]>;
+
+  @OneToMany(() => DocLegacy, (documento) => documento.cobradorDetalle, {
+    createForeignKeyConstraints: false,
+  })
+  documentosCobradosLegacy: Relation<DocLegacy[]>;
+
+  @OneToMany(() => PagoLegacy, (pago) => pago.emisorDetalle, {
+    createForeignKeyConstraints: false,
+  })
+  pagosEmitidosLegacy: Relation<PagoLegacy[]>;
 }

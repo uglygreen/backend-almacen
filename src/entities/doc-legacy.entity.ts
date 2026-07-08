@@ -1,7 +1,9 @@
 import { Column, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import type { Relation } from 'typeorm';
 import { Cliente } from './cliente.entity';
 import { DesLegacy } from './des-legacy.entity';
 import { DomLegacy } from './dom-legacy.entity';
+import { CfdLegacy, PagoLegacy } from './pagos-legacy.entity';
 import { Personal } from './personal.entity';
 
 @Entity('DOC')
@@ -220,41 +222,46 @@ export class DocLegacy {
     createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'CLIENTEID', referencedColumnName: 'clienteId' })
-  cliente: Cliente;
+  cliente: Relation<Cliente>;
 
   @ManyToOne(() => DomLegacy, (domicilio) => domicilio.documentosComoDomDoc, {
     createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'DOMDOCID', referencedColumnName: 'domId' })
-  domicilioDocumento: DomLegacy;
+  domicilioDocumento: Relation<DomLegacy>;
 
   @ManyToOne(() => Personal, {
     createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'EMISORID', referencedColumnName: 'perId' })
-  emisorDetalle: Personal;
+  emisorDetalle: Relation<Personal>;
 
   @ManyToOne(() => Personal, {
     createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'VENDEDORID', referencedColumnName: 'perId' })
-  vendedorDetalle: Personal;
+  vendedorDetalle: Relation<Personal>;
 
   @ManyToOne(() => Personal, {
     createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'COBRADORID', referencedColumnName: 'perId' })
-  cobradorDetalle: Personal;
+  cobradorDetalle: Relation<Personal>;
 
   @OneToMany(() => PagDocLegacy, (pagDoc) => pagDoc.doc, {
     createForeignKeyConstraints: false,
   })
-  pagos: PagDocLegacy[];
+  pagos: Relation<PagDocLegacy[]>;
+
+  @OneToMany(() => CfdLegacy, (cfd) => cfd.documento, {
+    createForeignKeyConstraints: false,
+  })
+  cfds: Relation<CfdLegacy[]>;
 
   @OneToMany(() => DesLegacy, (detalle) => detalle.documento, {
     createForeignKeyConstraints: false,
   })
-  detalles: DesLegacy[];
+  detalles: Relation<DesLegacy[]>;
 }
 
 @Entity('PAGDOC')
@@ -290,5 +297,11 @@ export class PagDocLegacy {
     createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'DOCID', referencedColumnName: 'docId' })
-  doc: DocLegacy;
+  doc: Relation<DocLegacy>;
+
+  @ManyToOne(() => PagoLegacy, (pago) => pago.aplicacionesDocumento, {
+    createForeignKeyConstraints: false,
+  })
+  @JoinColumn({ name: 'PAGPGID', referencedColumnName: 'pgId' })
+  pago: Relation<PagoLegacy>;
 }

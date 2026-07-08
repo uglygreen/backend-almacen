@@ -1,7 +1,10 @@
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
+import type { Relation } from 'typeorm';
 import { CorreoLegacy } from './correo-legacy.entity';
 import { DesLegacy } from './des-legacy.entity';
+import { DocLegacy } from './doc-legacy.entity';
 import { DomLegacy } from './dom-legacy.entity';
+import { CompagLegacy, PagoLegacy } from './pagos-legacy.entity';
 import { Personal } from './personal.entity';
 
 @Entity('CLI')
@@ -211,7 +214,7 @@ export class Cliente {
     name: 'VENDEDORID',          // La columna en la tabla CLI
     referencedColumnName: 'perId' // La propiedad en la entidad Personal
   })
-  vendedorDetalle: Personal;
+  vendedorDetalle: Relation<Personal>;
 
   @ManyToOne(() => Personal, {
     createForeignKeyConstraints: false
@@ -220,7 +223,7 @@ export class Cliente {
     name: 'COBRADORID',
     referencedColumnName: 'perId'
   })
-  cobradorDetalle: Personal;
+  cobradorDetalle: Relation<Personal>;
 
   @ManyToOne(() => Personal, {
     createForeignKeyConstraints: false
@@ -229,7 +232,7 @@ export class Cliente {
     name: 'EMISORID',
     referencedColumnName: 'perId'
   })
-  emisorDetalle: Personal;
+  emisorDetalle: Relation<Personal>;
 
   @ManyToOne(() => DomLegacy, {
     createForeignKeyConstraints: false
@@ -238,20 +241,35 @@ export class Cliente {
     name: 'DOMID',
     referencedColumnName: 'domId'
   })
-  domicilioPrincipal: DomLegacy;
+  domicilioPrincipal: Relation<DomLegacy>;
 
   @OneToMany(() => DomLegacy, (domicilio) => domicilio.cliente, {
     createForeignKeyConstraints: false
   })
-  domicilios: DomLegacy[];
+  domicilios: Relation<DomLegacy[]>;
 
   @OneToMany(() => DesLegacy, (detalle) => detalle.cliente, {
     createForeignKeyConstraints: false
   })
-  detallesDocumento: DesLegacy[];
+  detallesDocumento: Relation<DesLegacy[]>;
+
+  @OneToMany(() => DocLegacy, (documento) => documento.cliente, {
+    createForeignKeyConstraints: false,
+  })
+  documentosLegacy: Relation<DocLegacy[]>;
 
   @OneToMany(() => CorreoLegacy, (correo) => correo.cliente, {
     createForeignKeyConstraints: false
   })
-  correos: CorreoLegacy[];
+  correos: Relation<CorreoLegacy[]>;
+
+  @OneToMany(() => PagoLegacy, (pago) => pago.cliente, {
+    createForeignKeyConstraints: false,
+  })
+  pagosLegacy: Relation<PagoLegacy[]>;
+
+  @OneToMany(() => CompagLegacy, (compag) => compag.cliente, {
+    createForeignKeyConstraints: false,
+  })
+  complementosPagoLegacy: Relation<CompagLegacy[]>;
 }
