@@ -4,7 +4,7 @@ import bwipjs from 'bwip-js';
 import { existsSync, readFileSync } from 'fs';
 import PDFDocument from 'pdfkit';
 import { join } from 'path';
-import { In, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import { CfdLegacy, Cliente, CompagLegacy, DocLegacy, PagDocLegacy } from '../../entities';
 import { ListClientesMobileFacturasDto } from './dto/list-clientes-mobile-facturas.dto';
 
@@ -121,15 +121,39 @@ export class ClientesMobileCobranzaService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 5;
     const includeComplementos = query.includeComplementos ?? false;
-
-    const [facturas, total] = await this.docRepository
+    const emitTimbrarPattern = '%EmitirTimbrar%';
+    const invalidXmlSubquery = this.cfdRepository
+      .createQueryBuilder('cfdPendiente')
+      .select('1')
+      .where('cfdPendiente.docId = doc.docId')
+      .andWhere('cfdPendiente.xml IS NOT NULL')
+      .andWhere('cfdPendiente.xml LIKE :emitTimbrarPattern')
+      .getQuery();
+    const validXmlSubquery = this.cfdRepository
+      .createQueryBuilder('cfdTimbrado')
+      .select('1')
+      .where('cfdTimbrado.docId = doc.docId')
+      .andWhere('cfdTimbrado.xml IS NOT NULL')
+      .andWhere('cfdTimbrado.xml NOT LIKE :emitTimbrarPattern')
+      .getQuery();
+    const facturasQuery = this.docRepository
       .createQueryBuilder('doc')
       .where('doc.clienteId = :clienteId', { clienteId })
       .andWhere('doc.tipo = :tipo', { tipo: 'F' })
       .andWhere('doc.fecha >= :from', { from: this.formatDate(from) })
       .andWhere('doc.fecha <= :to', { to: this.formatDate(to) })
+      .andWhere(
+        new Brackets((qb) => {
+          qb.where(`NOT EXISTS (${invalidXmlSubquery})`).orWhere(`EXISTS (${validXmlSubquery})`);
+        }),
+      )
+      .setParameter('emitTimbrarPattern', emitTimbrarPattern)
       .orderBy('doc.fecha', 'DESC')
       .addOrderBy('doc.numero', 'DESC')
+    ;
+
+    const [facturas, total] = await facturasQuery
+      .clone()
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
@@ -157,7 +181,8 @@ export class ClientesMobileCobranzaService {
       const cfd = this.pickPrimaryCfd(cfdsByDocId.get(factura.docId) ?? []);
       const complementos = complementosPorDocId.get(factura.docId) ?? [];
       const saldoPendiente = this.toMoney(this.toNumber(factura.total) - this.toNumber(factura.totalPagado));
-      const xmlUrl = cfd?.xml ? this.buildAbsoluteUrl(request, `/clientes-mobile/facturas/${factura.docId}/xml`) : null;
+      const facturaXmlDisponible = this.hasTimbradoXml(cfd?.xml);
+      const xmlUrl = facturaXmlDisponible ? this.buildAbsoluteUrl(request, `/clientes-mobile/facturas/${factura.docId}/xml`) : null;
       const pdfUrl = this.buildAbsoluteUrl(request, `/clientes-mobile/facturas/${factura.docId}/pdf`);
 
       return {
@@ -179,7 +204,7 @@ export class ClientesMobileCobranzaService {
         totalPagado: this.toMoney(factura.totalPagado),
         saldoPendiente,
         uuid: this.cleanNullableString(cfd?.uuid),
-        xmlDisponible: Boolean(cfd?.xml),
+        xmlDisponible: facturaXmlDisponible,
         pdfDisponible: true,
         links: {
           xml: xmlUrl,
@@ -208,14 +233,15 @@ export class ClientesMobileCobranzaService {
 
   async downloadFacturaXml(clienteId: number, docId: number): Promise<FilePayload> {
     const { factura, cfd } = await this.findFacturaWithPrimaryCfd(clienteId, docId);
-    if (!cfd?.xml) {
+    const xml = cfd?.xml?.trim() ?? '';
+    if (!this.hasTimbradoXml(xml)) {
       throw new NotFoundException(`La factura ${docId} no cuenta con XML disponible`);
     }
 
     return {
       fileName: `${this.buildSafeFileName(factura, cfd)}.xml`,
       contentType: 'application/xml; charset=utf-8',
-      content: Buffer.from(cfd.xml, 'utf8'),
+      content: Buffer.from(xml, 'utf8'),
     };
   }
 
@@ -390,22 +416,35 @@ export class ClientesMobileCobranzaService {
   private getCfdPriority(cfd: CfdLegacy): number {
     const estado = (cfd.estado ?? '').trim().toUpperCase();
     if (estado === 'A' || estado === 'T' || estado === 'V') {
+      return this.hasTimbradoXml(cfd.xml) ? 4 : 2;
+    }
+
+    if (this.hasTimbradoXml(cfd.xml)) {
       return 3;
     }
 
     if (cfd.xml) {
-      return 2;
+      return 1;
     }
 
-    return 1;
+    return 0;
   }
 
   private async buildFacturaPdf(factura: DocLegacy, cfd: CfdLegacy | null) {
-    if (cfd?.xml) {
-      return this.buildCfdiPdfFromXml(cfd.xml);
+    const xml = cfd?.xml?.trim() ?? '';
+    if (this.hasTimbradoXml(xml)) {
+      return this.buildCfdiPdfFromXml(xml);
     }
 
     return this.buildFallbackFacturaPdf(factura, cfd);
+  }
+
+  private hasTimbradoXml(xml?: string | null) {
+    if (!xml) {
+      return false;
+    }
+
+    return !/<(?:[\w-]+:)?EmitirTimbrar\b/i.test(xml);
   }
 
   private async buildCfdiPdfFromXml(xml: string): Promise<Buffer> {
