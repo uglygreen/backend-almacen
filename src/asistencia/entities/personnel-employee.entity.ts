@@ -1,8 +1,10 @@
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
+import type { Relation } from 'typeorm';
 
 import { IclockTransaction } from './iclock-transaction.entity';
 import { PersonnelDepartment } from './personnel-department.entity';
 import { PersonnelPosition } from './personnel-position.entity';
+import { PersonnelResign } from './personnel-resign.entity';
 
 @Entity('personnel_employee')
 export class PersonnelEmployee {
@@ -27,17 +29,23 @@ export class PersonnelEmployee {
   @Column({ name: 'position_id', type: 'integer', nullable: true })
   position_id: number;
 
+  @Column({ name: 'hire_date', type: 'date', nullable: true })
+  hire_date: string | null;
+
   // Relación con el departamento
   @ManyToOne(() => PersonnelDepartment, (department) => department.employees)
   @JoinColumn({ name: 'department_id' })
-  department: PersonnelDepartment;
+  department: Relation<PersonnelDepartment>;
 
   // Relación con la posición
   @ManyToOne(() => PersonnelPosition, (position) => position.employees)
   @JoinColumn({ name: 'position_id' })
-  position: PersonnelPosition;
+  position: Relation<PersonnelPosition>;
 
   // Relación con transacciones
   @OneToMany(() => IclockTransaction, (transaction) => transaction.employee)
-  transactions: IclockTransaction[];
+  transactions: Relation<IclockTransaction[]>;
+
+  @OneToMany(() => PersonnelResign, (resignation) => resignation.employee)
+  resignations: Relation<PersonnelResign[]>;
 }

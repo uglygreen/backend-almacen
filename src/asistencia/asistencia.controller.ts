@@ -33,6 +33,18 @@ export class AsistenciaController {
     }
   }
 
+  @Get('reporte-almacenistas-mensual')
+  @ApiOperation({ summary: 'Obtener calendario mensual de almacenistas de la sucursal principal' })
+  @ApiResponse({ status: 200, description: 'Calendario mensual de almacenistas obtenido exitosamente.' })
+  async obtenerReporteAlmacenistasMensual() {
+    try {
+      const data = await this.asistenciaService.obtenerReporteAlmacenistasMensual();
+      return { success: true, data };
+    } catch (error) {
+      throw new HttpException({ success: false, message: error.message }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
   @Get('excel')
   @ApiOperation({ summary: 'Descargar reporte de asistencia en Excel' })
   @ApiResponse({ status: 200, description: 'Archivo Excel generado exitosamente.' })

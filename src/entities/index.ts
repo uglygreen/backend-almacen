@@ -90,6 +90,9 @@ export class AlmacenUser {
   @Column({ name: 'fecha_act', nullable: true })
   fechaAct: Date;
 
+   @Column({ name: 'fecha_ingreso', nullable: true })
+  fechaIngreso: Date;
+
 }
 
 @Entity('control_sincronizacion')

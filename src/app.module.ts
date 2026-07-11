@@ -55,6 +55,7 @@ import { IclockTransaction } from './asistencia/entities/iclock-transaction.enti
 import { PersonnelEmployee } from './asistencia/entities/personnel-employee.entity';
 import { PersonnelPosition } from './asistencia/entities/personnel-position.entity';
 import { PersonnelDepartment } from './asistencia/entities/personnel-department.entity';
+import { PersonnelResign } from './asistencia/entities/personnel-resign.entity';
 
 import { AuthAlmacenModule } from './modules/auth-almacen/auth-almacen.module';
 import { UsersAlmacenModule } from './modules/users-almacen/users-almacen.module';
@@ -183,6 +184,7 @@ function requiredEnv(key: string) {
         PersonnelEmployee,
         PersonnelPosition,
         PersonnelDepartment,
+        PersonnelResign,
       ],
       synchronize: false, // La base de datos ya existe, no sincronizar
     }),
@@ -203,6 +205,7 @@ function requiredEnv(key: string) {
         PersonnelEmployee,
         PersonnelPosition,
         PersonnelDepartment,
+        PersonnelResign,
       ],
       synchronize: false,
     }),

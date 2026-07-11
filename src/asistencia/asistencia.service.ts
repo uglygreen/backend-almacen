@@ -5,6 +5,7 @@ import { IclockTransaction } from './entities/iclock-transaction.entity';
 import { PersonnelDepartment } from './entities/personnel-department.entity';
 import { PersonnelPosition } from './entities/personnel-position.entity';
 import { PersonnelEmployee } from './entities/personnel-employee.entity';
+import { PersonnelResign } from './entities/personnel-resign.entity';
 import { GetAsistenciaDto } from './dto/get-asistencia.dto';
 import * as ExcelJS from 'exceljs';
 import { exec } from 'child_process';
@@ -13,6 +14,39 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const execAsync = promisify(exec);
+
+export type CalendarWeekdayKey = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
+
+export interface MonthlyWarehouseCalendarEmployee {
+  employeeId: number;
+  fullName: string;
+  hireDate: string | null;
+  activeDays: number;
+}
+
+export interface MonthlyWarehouseCalendarResignation {
+  id: number;
+  employeeId: number;
+  fullName: string;
+  resignDate: string;
+  resignType: number | null;
+  disableAttendance: boolean;
+  reason: string | null;
+}
+
+export interface MonthlyWarehouseCalendarDay {
+  weekday: CalendarWeekdayKey;
+  weekdayLabel: string;
+  date: string | null;
+  dayNumber: number | null;
+  employees: MonthlyWarehouseCalendarEmployee[];
+}
+
+export interface MonthlyWarehouseCalendarWeek {
+  weekIndex: number;
+  days: MonthlyWarehouseCalendarDay[];
+  resignations: MonthlyWarehouseCalendarResignation[];
+}
 
 @Injectable()
 export class AsistenciaService {
@@ -27,6 +61,8 @@ export class AsistenciaService {
     private readonly positionRepositoryPrincipal: Repository<PersonnelPosition>,
     @InjectRepository(PersonnelEmployee, 'zkteco_db')
     private readonly employeeRepositoryPrincipal: Repository<PersonnelEmployee>,
+    @InjectRepository(PersonnelResign, 'zkteco_db')
+    private readonly resignRepositoryPrincipal: Repository<PersonnelResign>,
     
     @InjectRepository(IclockTransaction, 'zkteco_tequis_db')
     private readonly transactionRepositoryTequis: Repository<IclockTransaction>,
@@ -83,6 +119,105 @@ export class AsistenciaService {
       department: this.departmentRepositoryPrincipal,
       position: this.positionRepositoryPrincipal,
       employee: this.employeeRepositoryPrincipal,
+    };
+  }
+
+  async obtenerReporteAlmacenistasMensual() {
+    const terminalId = 3;
+    const departmentId = 2;
+    const sucursal = 'principal' as const;
+    const monthWindow = this.getCurrentMonthWindow();
+
+    const employeeIdRows = await this.transactionRepositoryPrincipal.createQueryBuilder('transaction')
+      .innerJoin('transaction.employee', 'employee')
+      .select('DISTINCT employee.id', 'employee_id')
+      .where('transaction.terminal_id = :terminalId', { terminalId })
+      .andWhere('employee.department_id = :departmentId', { departmentId })
+      .getRawMany<{ employee_id: string }>();
+
+    const employeeIds = employeeIdRows
+      .map((row) => Number(row.employee_id))
+      .filter((value) => Number.isInteger(value) && value > 0);
+
+    const employees = employeeIds.length > 0
+      ? await this.employeeRepositoryPrincipal.createQueryBuilder('employee')
+          .where('employee.id IN (:...employeeIds)', { employeeIds })
+          .andWhere('employee.department_id = :departmentId', { departmentId })
+          .andWhere('employee.hire_date IS NOT NULL')
+          .andWhere('employee.hire_date <= :endDate', { endDate: monthWindow.endDate })
+          .orderBy('employee.first_name', 'ASC')
+          .addOrderBy('employee.last_name', 'ASC')
+          .getMany()
+      : [];
+
+    const resignations = employeeIds.length > 0
+      ? await this.resignRepositoryPrincipal.createQueryBuilder('resignation')
+          .leftJoinAndSelect('resignation.employee', 'employee')
+          .where('resignation.employee_id IN (:...employeeIds)', { employeeIds })
+          .andWhere('resignation.resign_date <= :endDate', { endDate: monthWindow.endDate })
+          .orderBy('resignation.resign_date', 'ASC')
+          .addOrderBy('employee.first_name', 'ASC')
+          .addOrderBy('employee.last_name', 'ASC')
+          .getMany()
+      : [];
+
+    const resignationMap = new Map<number, string>();
+    for (const resignation of resignations) {
+      if (!resignationMap.has(resignation.employee_id)) {
+        resignationMap.set(resignation.employee_id, resignation.resign_date);
+      }
+    }
+
+    const employeesByDate = new Map<string, MonthlyWarehouseCalendarEmployee[]>();
+    for (const date of this.getBusinessDatesBetween(monthWindow.startDate, monthWindow.endDate)) {
+      const activeEmployees = employees
+        .filter((employee) => this.isEmployeeActiveOnDate(employee, resignationMap.get(employee.id) ?? null, date))
+        .map((employee) => ({
+          employeeId: employee.id,
+          fullName: this.getEmployeeFullName(employee),
+          hireDate: employee.hire_date,
+          activeDays: this.getActiveDays(employee.hire_date, date),
+        }));
+
+      employeesByDate.set(date, activeEmployees);
+    }
+
+    const monthlyResignations = resignations
+      .filter((resignation) => resignation.resign_date >= monthWindow.startDate)
+      .map<MonthlyWarehouseCalendarResignation>((resignation) => ({
+        id: resignation.id,
+        employeeId: resignation.employee_id,
+        fullName: this.getEmployeeFullName(resignation.employee),
+        resignDate: resignation.resign_date,
+        resignType: resignation.resign_type,
+        disableAttendance: resignation.disableatt,
+        reason: resignation.reason,
+      }));
+
+    const weeks = this.buildMonthlyCalendarWeeks(
+      monthWindow.startDate,
+      monthWindow.endDate,
+      employeesByDate,
+      monthlyResignations,
+    );
+
+    return {
+      filters: {
+        departmentId,
+        sucursal,
+        terminalId,
+      },
+      window: {
+        startDate: monthWindow.startDate,
+        endDate: monthWindow.endDate,
+        monthLabel: this.getMonthLabel(monthWindow.startDate),
+      },
+      headers: ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Bajas'],
+      weeks,
+      totals: {
+        employees: employees.length,
+        resignations: monthlyResignations.length,
+      },
     };
   }
 
@@ -325,5 +460,165 @@ export class AsistenciaService {
       this.logger.error('Error al generar respaldo de BioTime', error);
       throw new Error('No se pudo generar el respaldo. Revisa si pg_dump está instalado: ' + error.message);
     }
+  }
+
+  private getCurrentMonthWindow() {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    return {
+      startDate: this.formatLocalDate(start),
+      endDate: this.formatLocalDate(end),
+    };
+  }
+
+  private buildMonthlyCalendarWeeks(
+    startDate: string,
+    endDate: string,
+    employeesByDate: Map<string, MonthlyWarehouseCalendarEmployee[]>,
+    resignations: MonthlyWarehouseCalendarResignation[],
+  ): MonthlyWarehouseCalendarWeek[] {
+    const start = this.parseLocalDate(startDate);
+    const end = this.parseLocalDate(endDate);
+    const firstWeekStart = this.getStartOfWeek(start);
+    const weeks: MonthlyWarehouseCalendarWeek[] = [];
+    let cursor = new Date(firstWeekStart);
+
+    while (cursor <= end) {
+      const weekStart = new Date(cursor);
+      const weekEnd = new Date(cursor);
+      weekEnd.setDate(weekEnd.getDate() + 4);
+
+      const days: MonthlyWarehouseCalendarDay[] = Array.from({ length: 5 }, (_, index) => {
+        const currentDate = new Date(weekStart);
+        currentDate.setDate(weekStart.getDate() + index);
+        const isoDate = this.formatLocalDate(currentDate);
+        const isInsideMonth = currentDate >= start && currentDate <= end;
+        const weekday = this.getWeekdayKey(index);
+
+        return {
+          weekday,
+          weekdayLabel: this.getWeekdayLabel(weekday),
+          date: isInsideMonth ? isoDate : null,
+          dayNumber: isInsideMonth ? currentDate.getDate() : null,
+          employees: isInsideMonth ? (employeesByDate.get(isoDate) ?? []) : [],
+        };
+      });
+
+      const weekResignations = resignations.filter((resignation) => (
+        resignation.resignDate >= startDate &&
+        resignation.resignDate <= endDate &&
+        resignation.resignDate >= this.formatLocalDate(weekStart) &&
+        resignation.resignDate <= this.formatLocalDate(weekEnd)
+      ));
+
+      weeks.push({
+        weekIndex: weeks.length + 1,
+        days,
+        resignations: weekResignations,
+      });
+
+      cursor.setDate(cursor.getDate() + 7);
+    }
+
+    return weeks;
+  }
+
+  private getBusinessDatesBetween(startDate: string, endDate: string) {
+    const start = this.parseLocalDate(startDate);
+    const end = this.parseLocalDate(endDate);
+    const dates: string[] = [];
+    const cursor = new Date(start);
+
+    while (cursor <= end) {
+      if (cursor.getDay() >= 1 && cursor.getDay() <= 5) {
+        dates.push(this.formatLocalDate(cursor));
+      }
+
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return dates;
+  }
+
+  private isEmployeeActiveOnDate(
+    employee: PersonnelEmployee,
+    resignDate: string | null,
+    currentDate: string,
+  ) {
+    if (!employee.hire_date) {
+      return false;
+    }
+
+    if (employee.hire_date > currentDate) {
+      return false;
+    }
+
+    if (resignDate && currentDate > resignDate) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private getActiveDays(hireDate: string | null, currentDate: string) {
+    if (!hireDate) {
+      return 0;
+    }
+
+    const hire = this.parseLocalDate(hireDate);
+    const current = this.parseLocalDate(currentDate);
+    const diffInMs = current.getTime() - hire.getTime();
+    const diffInDays = Math.max(0, Math.floor(diffInMs / 86400000) + 1);
+
+    return Math.min(diffInDays, 365);
+  }
+
+  private getEmployeeFullName(employee?: Pick<PersonnelEmployee, 'first_name' | 'last_name'> | null) {
+    const parts = [employee?.first_name?.trim(), employee?.last_name?.trim()].filter(Boolean);
+    return parts.length > 0 ? parts.join(' ') : 'Sin nombre';
+  }
+
+  private getMonthLabel(date: string) {
+    const baseDate = this.parseLocalDate(date);
+    const month = new Intl.DateTimeFormat('es-MX', { month: 'long' }).format(baseDate);
+    return `${month.charAt(0).toUpperCase()}${month.slice(1)} ${baseDate.getFullYear()}`;
+  }
+
+  private getStartOfWeek(date: Date) {
+    const result = new Date(date);
+    const day = result.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    result.setDate(result.getDate() + diff);
+    return result;
+  }
+
+  private getWeekdayKey(index: number): CalendarWeekdayKey {
+    return ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'][index] as CalendarWeekdayKey;
+  }
+
+  private getWeekdayLabel(weekday: CalendarWeekdayKey) {
+    const labels: Record<CalendarWeekdayKey, string> = {
+      monday: 'Lunes',
+      tuesday: 'Martes',
+      wednesday: 'Miercoles',
+      thursday: 'Jueves',
+      friday: 'Viernes',
+    };
+
+    return labels[weekday];
+  }
+
+  private parseLocalDate(value: string) {
+    const [year, month, day] = value.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+
+  private formatLocalDate(value: Date) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 }
