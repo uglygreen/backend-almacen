@@ -127,12 +127,13 @@ export class AsistenciaService {
     const departmentId = 2;
     const sucursal = 'principal' as const;
     const monthWindow = this.getCurrentMonthWindow();
+    const effectiveEndDate = monthWindow.effectiveEndDate;
 
     const activeEmployees = await this.employeeRepositoryPrincipal.createQueryBuilder('employee')
       .where('employee.department_id = :departmentId', { departmentId })
       .andWhere('employee.status = :activeStatus', { activeStatus: 0 })
       .andWhere('employee.hire_date IS NOT NULL')
-      .andWhere('employee.hire_date <= :endDate', { endDate: monthWindow.endDate })
+      .andWhere('employee.hire_date <= :endDate', { endDate: effectiveEndDate })
       .orderBy('employee.first_name', 'ASC')
       .addOrderBy('employee.last_name', 'ASC')
       .getMany();
@@ -142,7 +143,7 @@ export class AsistenciaService {
       .where('employee.department_id = :departmentId', { departmentId })
       .andWhere('employee.status = :resignedStatus', { resignedStatus: 99 })
       .andWhere('resignation.resign_date >= :startDate', { startDate: monthWindow.startDate })
-      .andWhere('resignation.resign_date <= :endDate', { endDate: monthWindow.endDate })
+      .andWhere('resignation.resign_date <= :endDate', { endDate: effectiveEndDate })
       .orderBy('resignation.resign_date', 'ASC')
       .addOrderBy('employee.first_name', 'ASC')
       .addOrderBy('employee.last_name', 'ASC')
@@ -160,7 +161,7 @@ export class AsistenciaService {
     for (const resignation of resignations) {
       resignationWeekWindows.set(
         resignation.employee_id,
-        this.getWeekWindowFromDate(resignation.resign_date, monthWindow.endDate),
+        this.getWeekWindowFromDate(resignation.resign_date, effectiveEndDate),
       );
     }
 
@@ -172,7 +173,7 @@ export class AsistenciaService {
           .andWhere('transaction.punch_state = :punchState', { punchState: '0' })
           .andWhere('transaction.punch_time BETWEEN :start AND :end', {
             start: `${monthWindow.startDate}T00:00:00.000-06:00`,
-            end: `${monthWindow.endDate}T23:59:59.999-06:00`,
+            end: `${effectiveEndDate}T23:59:59.999-06:00`,
           })
           .orderBy('transaction.punch_time', 'ASC')
           .getRawMany<{ emp_id: string; punch_time: Date | string }>()
@@ -225,7 +226,7 @@ export class AsistenciaService {
           .andWhere('transaction.punch_state = :punchState', { punchState: '0' })
           .andWhere('transaction.punch_time BETWEEN :start AND :end', {
             start: `${monthWindow.startDate}T00:00:00.000-06:00`,
-            end: `${monthWindow.endDate}T23:59:59.999-06:00`,
+            end: `${effectiveEndDate}T23:59:59.999-06:00`,
           })
           .orderBy('transaction.punch_time', 'ASC')
           .getRawMany<{ emp_id: string; punch_time: Date | string }>()
@@ -244,7 +245,7 @@ export class AsistenciaService {
     }
 
     const employeesByDate = new Map<string, MonthlyWarehouseCalendarEmployee[]>();
-    for (const date of this.getBusinessDatesBetween(monthWindow.startDate, monthWindow.endDate)) {
+    for (const date of this.getBusinessDatesBetween(monthWindow.startDate, effectiveEndDate)) {
       const employeesWithEntry = employeesWithEntryByDate.get(date) ?? new Set<number>();
       const absentEmployees = employees
         .filter((employee) => this.isEmployeeActiveOnDate(employee, resignationMap.get(employee.id) ?? null, date))
@@ -287,6 +288,7 @@ export class AsistenciaService {
       window: {
         startDate: monthWindow.startDate,
         endDate: monthWindow.endDate,
+        effectiveEndDate,
         monthLabel: this.getMonthLabel(monthWindow.startDate),
       },
       headers: ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Bajas'],
@@ -543,10 +545,12 @@ export class AsistenciaService {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
     const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     return {
       startDate: this.formatLocalDate(start),
       endDate: this.formatLocalDate(end),
+      effectiveEndDate: this.formatLocalDate(today <= end ? today : end),
     };
   }
 
