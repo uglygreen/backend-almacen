@@ -128,38 +128,87 @@ export class AsistenciaService {
     const sucursal = 'principal' as const;
     const monthWindow = this.getCurrentMonthWindow();
 
-    const employeeIdRows = await this.transactionRepositoryPrincipal.createQueryBuilder('transaction')
-      .innerJoin('transaction.employee', 'employee')
-      .select('DISTINCT employee.id', 'employee_id')
-      .where('transaction.terminal_id = :terminalId', { terminalId })
-      .andWhere('employee.department_id = :departmentId', { departmentId })
-      .getRawMany<{ employee_id: string }>();
+    const activeEmployees = await this.employeeRepositoryPrincipal.createQueryBuilder('employee')
+      .where('employee.department_id = :departmentId', { departmentId })
+      .andWhere('employee.status = :activeStatus', { activeStatus: 0 })
+      .andWhere('employee.hire_date IS NOT NULL')
+      .andWhere('employee.hire_date <= :endDate', { endDate: monthWindow.endDate })
+      .orderBy('employee.first_name', 'ASC')
+      .addOrderBy('employee.last_name', 'ASC')
+      .getMany();
 
-    const employeeIds = employeeIdRows
-      .map((row) => Number(row.employee_id))
-      .filter((value) => Number.isInteger(value) && value > 0);
+    const resignations = await this.resignRepositoryPrincipal.createQueryBuilder('resignation')
+      .leftJoinAndSelect('resignation.employee', 'employee')
+      .where('employee.department_id = :departmentId', { departmentId })
+      .andWhere('employee.status = :resignedStatus', { resignedStatus: 99 })
+      .andWhere('resignation.resign_date >= :startDate', { startDate: monthWindow.startDate })
+      .andWhere('resignation.resign_date <= :endDate', { endDate: monthWindow.endDate })
+      .orderBy('resignation.resign_date', 'ASC')
+      .addOrderBy('employee.first_name', 'ASC')
+      .addOrderBy('employee.last_name', 'ASC')
+      .getMany();
 
-    const employees = employeeIds.length > 0
-      ? await this.employeeRepositoryPrincipal.createQueryBuilder('employee')
-          .where('employee.id IN (:...employeeIds)', { employeeIds })
-          .andWhere('employee.department_id = :departmentId', { departmentId })
-          .andWhere('employee.hire_date IS NOT NULL')
-          .andWhere('employee.hire_date <= :endDate', { endDate: monthWindow.endDate })
-          .orderBy('employee.first_name', 'ASC')
-          .addOrderBy('employee.last_name', 'ASC')
-          .getMany()
+    const resignedEmployeeIds = Array.from(
+      new Set(
+        resignations
+          .map((resignation) => resignation.employee_id)
+          .filter((value) => Number.isInteger(value) && value > 0),
+      ),
+    );
+
+    const resignationWeekWindows = new Map<number, { startDate: string; endDate: string }>();
+    for (const resignation of resignations) {
+      resignationWeekWindows.set(
+        resignation.employee_id,
+        this.getWeekWindowFromDate(resignation.resign_date, monthWindow.endDate),
+      );
+    }
+
+    const resignedEntries = resignedEmployeeIds.length > 0
+      ? await this.transactionRepositoryPrincipal.createQueryBuilder('transaction')
+          .select(['transaction.emp_id AS emp_id', 'transaction.punch_time AS punch_time'])
+          .where('transaction.emp_id IN (:...employeeIds)', { employeeIds: resignedEmployeeIds })
+          .andWhere('transaction.terminal_id = :terminalId', { terminalId })
+          .andWhere('transaction.punch_state = :punchState', { punchState: '0' })
+          .andWhere('transaction.punch_time BETWEEN :start AND :end', {
+            start: `${monthWindow.startDate}T00:00:00.000-06:00`,
+            end: `${monthWindow.endDate}T23:59:59.999-06:00`,
+          })
+          .orderBy('transaction.punch_time', 'ASC')
+          .getRawMany<{ emp_id: string; punch_time: Date | string }>()
       : [];
 
-    const resignations = employeeIds.length > 0
-      ? await this.resignRepositoryPrincipal.createQueryBuilder('resignation')
-          .leftJoinAndSelect('resignation.employee', 'employee')
-          .where('resignation.employee_id IN (:...employeeIds)', { employeeIds })
-          .andWhere('resignation.resign_date <= :endDate', { endDate: monthWindow.endDate })
-          .orderBy('resignation.resign_date', 'ASC')
-          .addOrderBy('employee.first_name', 'ASC')
-          .addOrderBy('employee.last_name', 'ASC')
-          .getMany()
-      : [];
+    const resignedEmployeesWithWeekEntries = new Set<number>();
+    for (const transaction of resignedEntries) {
+      const employeeId = Number(transaction.emp_id);
+      const transactionDate = this.getTransactionLocalDateKey(transaction.punch_time);
+      const weekWindow = resignationWeekWindows.get(employeeId);
+
+      if (!weekWindow) {
+        continue;
+      }
+
+      if (transactionDate >= weekWindow.startDate && transactionDate <= weekWindow.endDate) {
+        resignedEmployeesWithWeekEntries.add(employeeId);
+      }
+    }
+
+    const resignedEmployees = resignations
+      .filter((resignation) => resignedEmployeesWithWeekEntries.has(resignation.employee_id))
+      .map((resignation) => resignation.employee)
+      .filter((employee): employee is PersonnelEmployee => !!employee);
+
+    const employees = Array.from(
+      new Map(
+        [...activeEmployees, ...resignedEmployees].map((employee) => [employee.id, employee]),
+      ).values(),
+    ).sort((left, right) => {
+      const leftName = this.getEmployeeFullName(left);
+      const rightName = this.getEmployeeFullName(right);
+      return leftName.localeCompare(rightName, 'es-MX');
+    });
+
+    const employeeIds = employees.map((employee) => employee.id);
 
     const resignationMap = new Map<number, string>();
     for (const resignation of resignations) {
@@ -168,10 +217,38 @@ export class AsistenciaService {
       }
     }
 
+    const entryTransactions = employeeIds.length > 0
+      ? await this.transactionRepositoryPrincipal.createQueryBuilder('transaction')
+          .select(['transaction.emp_id AS emp_id', 'transaction.punch_time AS punch_time'])
+          .where('transaction.emp_id IN (:...employeeIds)', { employeeIds })
+          .andWhere('transaction.terminal_id = :terminalId', { terminalId })
+          .andWhere('transaction.punch_state = :punchState', { punchState: '0' })
+          .andWhere('transaction.punch_time BETWEEN :start AND :end', {
+            start: `${monthWindow.startDate}T00:00:00.000-06:00`,
+            end: `${monthWindow.endDate}T23:59:59.999-06:00`,
+          })
+          .orderBy('transaction.punch_time', 'ASC')
+          .getRawMany<{ emp_id: string; punch_time: Date | string }>()
+      : [];
+
+    const employeesWithEntryByDate = new Map<string, Set<number>>();
+    for (const transaction of entryTransactions) {
+      const employeeId = Number(transaction.emp_id);
+      const dateKey = this.getTransactionLocalDateKey(transaction.punch_time);
+
+      if (!employeesWithEntryByDate.has(dateKey)) {
+        employeesWithEntryByDate.set(dateKey, new Set<number>());
+      }
+
+      employeesWithEntryByDate.get(dateKey)?.add(employeeId);
+    }
+
     const employeesByDate = new Map<string, MonthlyWarehouseCalendarEmployee[]>();
     for (const date of this.getBusinessDatesBetween(monthWindow.startDate, monthWindow.endDate)) {
-      const activeEmployees = employees
+      const employeesWithEntry = employeesWithEntryByDate.get(date) ?? new Set<number>();
+      const absentEmployees = employees
         .filter((employee) => this.isEmployeeActiveOnDate(employee, resignationMap.get(employee.id) ?? null, date))
+        .filter((employee) => !employeesWithEntry.has(employee.id))
         .map((employee) => ({
           employeeId: employee.id,
           fullName: this.getEmployeeFullName(employee),
@@ -179,7 +256,7 @@ export class AsistenciaService {
           activeDays: this.getActiveDays(employee.hire_date, date),
         }));
 
-      employeesByDate.set(date, activeEmployees);
+      employeesByDate.set(date, absentEmployees);
     }
 
     const monthlyResignations = resignations
@@ -594,6 +671,19 @@ export class AsistenciaService {
     return result;
   }
 
+  private getWeekWindowFromDate(date: string, maxDate: string) {
+    const currentDate = this.parseLocalDate(date);
+    const weekStart = this.getStartOfWeek(currentDate);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 4);
+    const maxWeekEnd = this.parseLocalDate(maxDate);
+
+    return {
+      startDate: this.formatLocalDate(weekStart),
+      endDate: this.formatLocalDate(weekEnd <= maxWeekEnd ? weekEnd : maxWeekEnd),
+    };
+  }
+
   private getWeekdayKey(index: number): CalendarWeekdayKey {
     return ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'][index] as CalendarWeekdayKey;
   }
@@ -620,5 +710,11 @@ export class AsistenciaService {
     const month = String(value.getMonth() + 1).padStart(2, '0');
     const day = String(value.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  }
+
+  private getTransactionLocalDateKey(value: Date | string) {
+    const date = value instanceof Date ? value : new Date(value);
+    const adjustedDate = new Date(date.getTime() + 3600000);
+    return this.formatLocalDate(adjustedDate);
   }
 }

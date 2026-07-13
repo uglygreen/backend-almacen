@@ -32,8 +32,8 @@ async function bootstrap() {
   let httpsOptions: any = null;
   try {
     const keyPath = envString('SSL_KEY_PATH', '/etc/apache2/ssl/ferremayoristas.key');
-    const certPath = envString('SSL_CERT_PATH', '/etc/apache2/ssl/86cfeec44800f120.crt');
-    const caPath = envString('SSL_CA_PATH', '/etc/apache2/ssl/gd_bundle-g2.crt');
+    const certPath = envString('SSL_CERT_PATH', '/etc/apache2/ssl/ferremayoristas.crt');
+    const caPath = envString('SSL_CA_PATH', '/etc/apache2/ssl/gd_bundle_dv-r1-g2.crt.pem');
     const useHttps = envBoolean('SSL_ENABLED', true);
 
     // Verificar si existen los archivos antes de leerlos (evita error en local/Windows)
