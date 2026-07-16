@@ -141,7 +141,6 @@ export class AsistenciaService {
     const resignations = await this.resignRepositoryPrincipal.createQueryBuilder('resignation')
       .leftJoinAndSelect('resignation.employee', 'employee')
       .where('employee.department_id = :departmentId', { departmentId })
-      .andWhere('employee.status = :resignedStatus', { resignedStatus: 99 })
       .andWhere('resignation.resign_date >= :startDate', { startDate: monthWindow.startDate })
       .andWhere('resignation.resign_date <= :endDate', { endDate: effectiveEndDate })
       .orderBy('resignation.resign_date', 'ASC')
