@@ -11,7 +11,11 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { ThermalLabelType, ThermalLabelsAlmacenService } from './thermal-labels-almacen.service';
+import {
+  ThermalLabelType,
+  ThermalLabelsAlmacenService,
+  ZplMeasureUnit,
+} from './thermal-labels-almacen.service';
 import type { Response } from 'express';
 
 @ApiTags('Thermal Labels Almacen')
@@ -69,6 +73,89 @@ export class ThermalLabelsAlmacenController {
 
     const resultPdf = await this.thermalLabelsService.adaptPdf(file.buffer, labelType as ThermalLabelType);
     const outputFileName = this.thermalLabelsService.getDownloadFileName(file.originalname, labelType);
+
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Disposition', `attachment; filename="${outputFileName}"`);
+
+    return new StreamableFile(Buffer.from(resultPdf));
+  }
+
+  @Post('zpl-to-pdf')
+  @ApiOperation({ summary: 'Convierte un archivo TXT con codigo ZPL a un PDF unificado usando Labelary' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file', 'width', 'height', 'unit'],
+      properties: {
+        width: {
+          type: 'number',
+          example: 10,
+          description: 'Ancho de la etiqueta',
+        },
+        height: {
+          type: 'number',
+          example: 15,
+          description: 'Alto de la etiqueta',
+        },
+        unit: {
+          type: 'string',
+          enum: ['mm', 'cm', 'in'],
+          description: 'Unidad de medida recibida desde el frontend',
+        },
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Archivo TXT que contiene codigo ZPL',
+        },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 10 * 1024 * 1024,
+      },
+      fileFilter: (req, file, cb) => {
+        const isTxt = /\.txt$/i.test(file.originalname);
+        const allowedMimeTypes = ['text/plain', 'application/octet-stream', ''];
+        if (!isTxt || !allowedMimeTypes.includes(file.mimetype)) {
+          return cb(new BadRequestException('Solo se permiten archivos TXT con codigo ZPL'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async convertZplToPdf(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body('width') widthRaw: string | undefined,
+    @Body('height') heightRaw: string | undefined,
+    @Body('unit') unit: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Debes subir un archivo TXT');
+    }
+
+    if (!unit || !this.thermalLabelsService.isSupportedZplUnit(unit)) {
+      throw new BadRequestException('unit debe ser "mm", "cm" o "in"');
+    }
+
+    const width = Number.parseFloat(widthRaw ?? '');
+    const height = Number.parseFloat(heightRaw ?? '');
+
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      throw new BadRequestException('width y height deben ser numeros mayores a 0');
+    }
+
+    const resultPdf = await this.thermalLabelsService.convertZplToPdf(
+      file.buffer,
+      width,
+      height,
+      unit as ZplMeasureUnit,
+    );
+    const outputFileName = this.thermalLabelsService.getZplDownloadFileName(file.originalname);
 
     response.setHeader('Content-Type', 'application/pdf');
     response.setHeader('Content-Disposition', `attachment; filename="${outputFileName}"`);
