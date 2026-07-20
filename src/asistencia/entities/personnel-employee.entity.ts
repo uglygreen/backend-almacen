@@ -2,6 +2,7 @@ import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, OneToMan
 import type { Relation } from 'typeorm';
 
 import { IclockTransaction } from './iclock-transaction.entity';
+import { AttLeave } from './att-leave.entity';
 import { PersonnelDepartment } from './personnel-department.entity';
 import { PersonnelPosition } from './personnel-position.entity';
 import { PersonnelResign } from './personnel-resign.entity';
@@ -45,6 +46,9 @@ export class PersonnelEmployee {
   // Relación con transacciones
   @OneToMany(() => IclockTransaction, (transaction) => transaction.employee)
   transactions: Relation<IclockTransaction[]>;
+
+  @OneToMany(() => AttLeave, (leave) => leave.employee)
+  leaves: Relation<AttLeave[]>;
 
   @OneToMany(() => PersonnelResign, (resignation) => resignation.employee)
   resignations: Relation<PersonnelResign[]>;

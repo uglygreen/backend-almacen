@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { IclockTransaction } from './entities/iclock-transaction.entity';
+import { AttLeave } from './entities/att-leave.entity';
 import { PersonnelDepartment } from './entities/personnel-department.entity';
 import { PersonnelPosition } from './entities/personnel-position.entity';
 import { PersonnelEmployee } from './entities/personnel-employee.entity';
@@ -16,12 +17,21 @@ import * as path from 'path';
 const execAsync = promisify(exec);
 
 export type CalendarWeekdayKey = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
+export type MonthlyWarehouseCalendarAttendanceStatus = 'absence' | 'leave';
 
 export interface MonthlyWarehouseCalendarEmployee {
   employeeId: number;
   fullName: string;
   hireDate: string | null;
   activeDays: number;
+  attendanceStatus: MonthlyWarehouseCalendarAttendanceStatus;
+  leaveId: number | null;
+  leaveCategoryId: number | null;
+  leaveCategoryName: string | null;
+  leaveDurationHours: number | null;
+  leaveStartTime: string | null;
+  leaveEndTime: string | null;
+  leaveReason: string | null;
 }
 
 export interface MonthlyWarehouseCalendarResignation {
@@ -55,6 +65,8 @@ export class AsistenciaService {
   constructor(
     @InjectRepository(IclockTransaction, 'zkteco_db')
     private readonly transactionRepositoryPrincipal: Repository<IclockTransaction>,
+    @InjectRepository(AttLeave, 'zkteco_db')
+    private readonly leaveRepositoryPrincipal: Repository<AttLeave>,
     @InjectRepository(PersonnelDepartment, 'zkteco_db')
     private readonly departmentRepositoryPrincipal: Repository<PersonnelDepartment>,
     @InjectRepository(PersonnelPosition, 'zkteco_db')
@@ -66,6 +78,8 @@ export class AsistenciaService {
     
     @InjectRepository(IclockTransaction, 'zkteco_tequis_db')
     private readonly transactionRepositoryTequis: Repository<IclockTransaction>,
+    @InjectRepository(AttLeave, 'zkteco_tequis_db')
+    private readonly leaveRepositoryTequis: Repository<AttLeave>,
     @InjectRepository(PersonnelDepartment, 'zkteco_tequis_db')
     private readonly departmentRepositoryTequis: Repository<PersonnelDepartment>,
     @InjectRepository(PersonnelPosition, 'zkteco_tequis_db')
@@ -107,6 +121,7 @@ export class AsistenciaService {
 
       return {
         transaction: this.transactionRepositoryTequis,
+        leave: this.leaveRepositoryTequis,
         department: this.departmentRepositoryTequis,
         position: this.positionRepositoryTequis,
         employee: this.employeeRepositoryTequis,
@@ -116,6 +131,7 @@ export class AsistenciaService {
     // Por defecto devuelve la principal
     return {
       transaction: this.transactionRepositoryPrincipal,
+      leave: this.leaveRepositoryPrincipal,
       department: this.departmentRepositoryPrincipal,
       position: this.positionRepositoryPrincipal,
       employee: this.employeeRepositoryPrincipal,
@@ -210,6 +226,20 @@ export class AsistenciaService {
 
     const employeeIds = employees.map((employee) => employee.id);
 
+    const monthlyLeaves = employeeIds.length > 0
+      ? await this.leaveRepositoryPrincipal.createQueryBuilder('attLeave')
+          .leftJoinAndSelect('attLeave.category', 'category')
+          .where('attLeave.employee_id IN (:...employeeIds)', { employeeIds })
+          .andWhere('attLeave.start_time <= :endDateTime', {
+            endDateTime: `${effectiveEndDate}T23:59:59.999-06:00`,
+          })
+          .andWhere('attLeave.end_time >= :startDateTime', {
+            startDateTime: `${monthWindow.startDate}T00:00:00.000-06:00`,
+          })
+          .orderBy('attLeave.start_time', 'ASC')
+          .getMany()
+      : [];
+
     const resignationMap = new Map<number, string>();
     for (const resignation of resignations) {
       if (!resignationMap.has(resignation.employee_id)) {
@@ -243,18 +273,53 @@ export class AsistenciaService {
       employeesWithEntryByDate.get(dateKey)?.add(employeeId);
     }
 
+    const leavesByEmployeeAndDate = new Map<string, AttLeave[]>();
+    for (const leave of monthlyLeaves) {
+      const leaveStartDate = this.getDateTimeLocalDateKey(leave.start_time);
+      const leaveEndDate = this.getDateTimeLocalDateKey(leave.end_time);
+      const rangeStartDate = leaveStartDate > monthWindow.startDate ? leaveStartDate : monthWindow.startDate;
+      const rangeEndDate = leaveEndDate < effectiveEndDate ? leaveEndDate : effectiveEndDate;
+
+      if (rangeStartDate > rangeEndDate) {
+        continue;
+      }
+
+      for (const date of this.getBusinessDatesBetween(rangeStartDate, rangeEndDate)) {
+        const key = `${leave.employee_id}|${date}`;
+        if (!leavesByEmployeeAndDate.has(key)) {
+          leavesByEmployeeAndDate.set(key, []);
+        }
+
+        leavesByEmployeeAndDate.get(key)?.push(leave);
+      }
+    }
+
     const employeesByDate = new Map<string, MonthlyWarehouseCalendarEmployee[]>();
     for (const date of this.getBusinessDatesBetween(monthWindow.startDate, effectiveEndDate)) {
       const employeesWithEntry = employeesWithEntryByDate.get(date) ?? new Set<number>();
-      const absentEmployees = employees
+      const absentEmployees: MonthlyWarehouseCalendarEmployee[] = employees
         .filter((employee) => this.isEmployeeActiveOnDate(employee, resignationMap.get(employee.id) ?? null, date))
         .filter((employee) => !employeesWithEntry.has(employee.id))
-        .map((employee) => ({
-          employeeId: employee.id,
-          fullName: this.getEmployeeFullName(employee),
-          hireDate: employee.hire_date,
-          activeDays: this.getActiveDays(employee.hire_date, date),
-        }));
+        .map((employee) => {
+          const leaveSummary = this.summarizeLeaveEntries(
+            leavesByEmployeeAndDate.get(`${employee.id}|${date}`) ?? [],
+          );
+
+          return {
+            employeeId: employee.id,
+            fullName: this.getEmployeeFullName(employee),
+            hireDate: employee.hire_date,
+            activeDays: this.getActiveDays(employee.hire_date, date),
+            attendanceStatus: leaveSummary ? ('leave' as const) : ('absence' as const),
+            leaveId: leaveSummary?.leaveId ?? null,
+            leaveCategoryId: leaveSummary?.leaveCategoryId ?? null,
+            leaveCategoryName: leaveSummary?.leaveCategoryName ?? null,
+            leaveDurationHours: leaveSummary?.leaveDurationHours ?? null,
+            leaveStartTime: leaveSummary?.leaveStartTime ?? null,
+            leaveEndTime: leaveSummary?.leaveEndTime ?? null,
+            leaveReason: leaveSummary?.leaveReason ?? null,
+          };
+        });
 
       employeesByDate.set(date, absentEmployees);
     }
@@ -295,6 +360,9 @@ export class AsistenciaService {
       totals: {
         employees: employees.length,
         resignations: monthlyResignations.length,
+        permissions: Array.from(employeesByDate.values())
+          .flat()
+          .filter((employee) => employee.attendanceStatus === 'leave').length,
       },
     };
   }
@@ -360,17 +428,73 @@ export class AsistenciaService {
     console.log('Parámetros de consulta:', query.getParameters());
 
     const employees = await query.getMany();
+    const employeeIds = employees.map((employee) => employee.id);
+    const leavePermissionsByEmployee = new Map<number, Array<{
+      leaveId: number;
+      categoryId: number | null;
+      categoryName: string;
+      durationHours: number;
+      startTime: string;
+      endTime: string;
+      applyReason: string | null;
+      startDate: string;
+      endDate: string;
+    }>>();
+
+    if (employeeIds.length > 0 && (dto.startDate || dto.endDate)) {
+      const leaveQuery = repos.leave.createQueryBuilder('attLeave')
+        .leftJoinAndSelect('attLeave.category', 'category')
+        .where('attLeave.employee_id IN (:...employeeIds)', { employeeIds });
+
+      if (dto.startDate) {
+        leaveQuery.andWhere('attLeave.end_time >= :leaveStartDate', {
+          leaveStartDate: `${dto.startDate}T00:00:00.000-06:00`,
+        });
+      }
+
+      if (dto.endDate) {
+        leaveQuery.andWhere('attLeave.start_time <= :leaveEndDate', {
+          leaveEndDate: `${dto.endDate}T23:59:59.999-06:00`,
+        });
+      }
+
+      const leaves = await leaveQuery
+        .orderBy('attLeave.start_time', 'ASC')
+        .getMany();
+
+      for (const leave of leaves) {
+        if (!leavePermissionsByEmployee.has(leave.employee_id)) {
+          leavePermissionsByEmployee.set(leave.employee_id, []);
+        }
+
+        leavePermissionsByEmployee.get(leave.employee_id)?.push({
+          leaveId: leave.abstractexception_ptr_id,
+          categoryId: leave.category_id,
+          categoryName: leave.category?.category_name?.trim() || 'Permiso',
+          durationHours: this.getDateRangeDurationHours(leave.start_time, leave.end_time),
+          startTime: this.formatLocalDateTime(leave.start_time),
+          endTime: this.formatLocalDateTime(leave.end_time),
+          applyReason: leave.apply_reason?.trim() || null,
+          startDate: this.getDateTimeLocalDateKey(leave.start_time),
+          endDate: this.getDateTimeLocalDateKey(leave.end_time),
+        });
+      }
+    }
 
     // Aplanar los resultados para mantener la estructura compatible con el Frontend y el Excel
     const result: any[] = [];
     for (const emp of employees) {
       const { transactions, ...empData } = emp;
+      const employeeWithPermissions = {
+        ...empData,
+        leavePermissions: leavePermissionsByEmployee.get(emp.id) ?? [],
+      };
 
       if (transactions && transactions.length > 0) {
         for (const tx of transactions) {
           result.push({
             ...tx,
-            employee: empData
+            employee: employeeWithPermissions,
           });
         }
       } else {
@@ -381,7 +505,7 @@ export class AsistenciaService {
           punch_time: null,
           punch_state: 'Sin Registro',
           verify_type: null,
-          employee: empData
+          employee: employeeWithPermissions,
         });
       }
     }
@@ -655,6 +779,64 @@ export class AsistenciaService {
     return Math.min(diffInDays, 365);
   }
 
+  private summarizeLeaveEntries(leaves: AttLeave[]) {
+    if (!leaves.length) {
+      return null;
+    }
+
+    const orderedLeaves = [...leaves].sort(
+      (left, right) => new Date(left.start_time).getTime() - new Date(right.start_time).getTime(),
+    );
+    const categoryNames = Array.from(
+      new Set(
+        orderedLeaves
+          .map((leave) => leave.category?.category_name?.trim())
+          .filter((value): value is string => !!value),
+      ),
+    );
+    const reasons = Array.from(
+      new Set(
+        orderedLeaves
+          .map((leave) => leave.apply_reason?.trim())
+          .filter((value): value is string => !!value),
+      ),
+    );
+    const startTime = orderedLeaves.reduce(
+      (min, leave) => {
+        const current = new Date(leave.start_time);
+        return current < min ? current : min;
+      },
+      new Date(orderedLeaves[0].start_time),
+    );
+    const endTime = orderedLeaves.reduce(
+      (max, leave) => {
+        const current = new Date(leave.end_time);
+        return current > max ? current : max;
+      },
+      new Date(orderedLeaves[0].end_time),
+    );
+    const totalDurationHours = orderedLeaves.reduce((sum, leave) => (
+      sum + Math.max(0, new Date(leave.end_time).getTime() - new Date(leave.start_time).getTime())
+    ), 0) / 3600000;
+
+    return {
+      leaveId: orderedLeaves[0].abstractexception_ptr_id,
+      leaveCategoryId: orderedLeaves[0].category_id,
+      leaveCategoryName: categoryNames.length ? categoryNames.join(' / ') : 'Permiso',
+      leaveDurationHours: Number(totalDurationHours.toFixed(2)),
+      leaveStartTime: this.formatLocalDateTime(startTime),
+      leaveEndTime: this.formatLocalDateTime(endTime),
+      leaveReason: reasons.length ? reasons.join(' / ') : null,
+    };
+  }
+
+  private getDateRangeDurationHours(start: Date | string, end: Date | string) {
+    const startDate = start instanceof Date ? start : new Date(start);
+    const endDate = end instanceof Date ? end : new Date(end);
+    const durationHours = Math.max(0, endDate.getTime() - startDate.getTime()) / 3600000;
+    return Number(durationHours.toFixed(2));
+  }
+
   private getEmployeeFullName(employee?: Pick<PersonnelEmployee, 'first_name' | 'last_name'> | null) {
     const parts = [employee?.first_name?.trim(), employee?.last_name?.trim()].filter(Boolean);
     return parts.length > 0 ? parts.join(' ') : 'Sin nombre';
@@ -715,9 +897,25 @@ export class AsistenciaService {
     return `${year}-${month}-${day}`;
   }
 
+  private formatLocalDateTime(value: Date | string) {
+    const date = value instanceof Date ? value : new Date(value);
+    const adjustedDate = new Date(date.getTime() + 3600000);
+    const year = adjustedDate.getFullYear();
+    const month = String(adjustedDate.getMonth() + 1).padStart(2, '0');
+    const day = String(adjustedDate.getDate()).padStart(2, '0');
+    const hours = String(adjustedDate.getHours()).padStart(2, '0');
+    const minutes = String(adjustedDate.getMinutes()).padStart(2, '0');
+    const seconds = String(adjustedDate.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  }
+
   private getTransactionLocalDateKey(value: Date | string) {
     const date = value instanceof Date ? value : new Date(value);
     const adjustedDate = new Date(date.getTime() + 3600000);
     return this.formatLocalDate(adjustedDate);
+  }
+
+  private getDateTimeLocalDateKey(value: Date | string) {
+    return this.getTransactionLocalDateKey(value);
   }
 }

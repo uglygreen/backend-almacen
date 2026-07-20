@@ -51,6 +51,8 @@ import { EventsModule } from './events/events.module';
 import { Personal } from './entities/personal.entity';
 import { PersonalModule } from './personal/personal.module';
 import { AsistenciaModule } from './asistencia/asistencia.module';
+import { AttLeave } from './asistencia/entities/att-leave.entity';
+import { AttLeaveCategory } from './asistencia/entities/att-leave-category.entity';
 import { IclockTransaction } from './asistencia/entities/iclock-transaction.entity';
 import { PersonnelEmployee } from './asistencia/entities/personnel-employee.entity';
 import { PersonnelPosition } from './asistencia/entities/personnel-position.entity';
@@ -182,6 +184,8 @@ function requiredEnv(key: string) {
       database: requiredEnv('ZKTECO_DB_NAME'),
       entities: [
         IclockTransaction,
+        AttLeave,
+        AttLeaveCategory,
         PersonnelEmployee,
         PersonnelPosition,
         PersonnelDepartment,
@@ -203,6 +207,8 @@ function requiredEnv(key: string) {
       database: requiredEnv('ZKTECO_TEQUIS_DB_NAME'),
       entities: [
         IclockTransaction,
+        AttLeave,
+        AttLeaveCategory,
         PersonnelEmployee,
         PersonnelPosition,
         PersonnelDepartment,
