@@ -12,7 +12,8 @@ type PersonalBaseDefinition = {
 };
 
 const PERSONAL_BASE_DEFINITIONS: PersonalBaseDefinition[] = [
-  { area: 'almacen', seccion: 'almacen', nombre: 'Almacen', basePersonal: 18 },
+  { area: 'almacen', seccion: 'zona01', nombre: 'Almacen Zona 1', basePersonal: 11 },
+  { area: 'almacen', seccion: 'zona02', nombre: 'Almacen Zona 2', basePersonal: 11 },
   { area: 'asesor', seccion: 'zona01', nombre: 'Asesores Zona 1', basePersonal: 7 },
   { area: 'asesor', seccion: 'zona02', nombre: 'Asesores Zona 2', basePersonal: 7 },
   { area: 'chofer', seccion: 'chofer01', nombre: 'Choferes Zona 1', basePersonal: 10 },
