@@ -191,7 +191,7 @@ export class ClientesMobileCobranzaService {
         serie: this.cleanNullableString(factura.serie),
         numero: this.toNumber(factura.numero),
         fecha: this.formatNullableDate(cfd?.fecha ?? factura.fecha),
-        fechaDocumento: this.formatNullableDateTime(factura.docFecha),
+        fechaDocumento: this.formatNullableDateTime(factura.fecha),
         vencimiento: this.formatNullableDate(factura.vence),
         estado: this.cleanNullableString(factura.estado),
         estadoCfd: this.cleanNullableString(factura.estadoCfd),
@@ -1577,12 +1577,20 @@ export class ClientesMobileCobranzaService {
       return null;
     }
 
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s.*)?$/);
+      if (dateOnlyMatch) {
+        return `${dateOnlyMatch[1]}-${dateOnlyMatch[2]}-${dateOnlyMatch[3]}`;
+      }
+    }
+
     const parsed = value instanceof Date ? value : new Date(value);
     if (!Number.isFinite(parsed.getTime())) {
       return null;
     }
 
-    return this.formatDate(parsed);
+    return this.formatUtcDate(parsed);
   }
 
   private formatNullableDateTime(value: Date | string | null | undefined) {
@@ -1602,6 +1610,13 @@ export class ClientesMobileCobranzaService {
     const year = value.getFullYear();
     const month = `${value.getMonth() + 1}`.padStart(2, '0');
     const day = `${value.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private formatUtcDate(value: Date) {
+    const year = value.getUTCFullYear();
+    const month = `${value.getUTCMonth() + 1}`.padStart(2, '0');
+    const day = `${value.getUTCDate()}`.padStart(2, '0');
     return `${year}-${month}-${day}`;
   }
 
