@@ -190,7 +190,7 @@ export class ClientesMobileCobranzaService {
         folio: this.buildFolio(factura.serie, factura.numero),
         serie: this.cleanNullableString(factura.serie),
         numero: this.toNumber(factura.numero),
-        fecha: this.formatNullableDate(factura.fecha),
+        fecha: this.formatNullableDate(cfd?.fecha ?? factura.fecha),
         fechaDocumento: this.formatNullableDateTime(factura.docFecha),
         vencimiento: this.formatNullableDate(factura.vence),
         estado: this.cleanNullableString(factura.estado),

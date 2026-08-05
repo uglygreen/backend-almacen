@@ -85,6 +85,7 @@ import { PersonalBaseAlmacenModule } from './modules/personal-base-almacen/perso
 import { ThermalLabelsAlmacenModule } from './modules/thermal-labels-almacen/thermal-labels-almacen.module';
 import { CustomerNotificationsModule } from './modules/customer-notifications/customer-notifications.module';
 import { CuentasPorCobrarBackofficeModule } from './modules/cuentas-por-cobrar-backoffice/cuentas-por-cobrar-backoffice.module';
+import { ReportesKpiModule } from './modules/reportes-kpi/reportes-kpi.module';
 import { envNumber, envString } from './config/runtime-env';
 
 function requiredEnv(key: string) {
@@ -248,6 +249,7 @@ function requiredEnv(key: string) {
     ThermalLabelsAlmacenModule,
     CustomerNotificationsModule,
     CuentasPorCobrarBackofficeModule,
+    ReportesKpiModule,
   ],
   controllers: [],
   providers: [],
