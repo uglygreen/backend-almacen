@@ -130,32 +130,32 @@ export class PaymentNotificationJob {
       },
     });
 
-    for (const impact of fullyPaidInvoices) {
-      await this.customerNotificationsService.dispatchCustomerNotification({
-        customerId,
-        type: CustomerNotificationType.INVOICE_PAID,
-        title: 'Factura liquidada',
-        body: `Tu factura ${impact.folio} quedó pagada en su totalidad.`,
-        dedupeKey: `${CustomerNotificationType.INVOICE_PAID}:${pago.pgId}:${impact.docId}`,
-        scheduledFor: new Date(),
-        metadata: {
-          source: 'payment_notification_job',
-          paymentId: pago.pgId,
-          documentId: impact.docId,
-          folio: impact.folio,
-          total: impact.total,
-          previouslyPaid: impact.previouslyPaid,
-          currentApplied: impact.currentApplied,
-          resultingPaid: impact.resultingPaid,
-        },
-        data: {
-          type: CustomerNotificationType.INVOICE_PAID,
-          paymentId: pago.pgId,
-          documentId: impact.docId,
-          folio: impact.folio,
-        },
-      });
-    }
+    // for (const impact of fullyPaidInvoices) {
+    //   await this.customerNotificationsService.dispatchCustomerNotification({
+    //     customerId,
+    //     type: CustomerNotificationType.INVOICE_PAID,
+    //     title: 'Factura liquidada',
+    //     body: `Tu factura ${impact.folio} quedó pagada en su totalidad.`,
+    //     dedupeKey: `${CustomerNotificationType.INVOICE_PAID}:${pago.pgId}:${impact.docId}`,
+    //     scheduledFor: new Date(),
+    //     metadata: {
+    //       source: 'payment_notification_job',
+    //       paymentId: pago.pgId,
+    //       documentId: impact.docId,
+    //       folio: impact.folio,
+    //       total: impact.total,
+    //       previouslyPaid: impact.previouslyPaid,
+    //       currentApplied: impact.currentApplied,
+    //       resultingPaid: impact.resultingPaid,
+    //     },
+    //     data: {
+    //       type: CustomerNotificationType.INVOICE_PAID,
+    //       paymentId: pago.pgId,
+    //       documentId: impact.docId,
+    //       folio: impact.folio,
+    //     },
+    //   });
+    // }
 
     if (impacts.length > 1) {
       await this.customerNotificationsService.dispatchCustomerNotification({
