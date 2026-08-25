@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
+  ClienteMobileSession,
   CustomerNotificationType,
   PagoLegacy,
   PaymentNotificationCheckpoint,
@@ -29,6 +30,8 @@ export class PaymentNotificationJob {
   constructor(
     @InjectRepository(PaymentNotificationCheckpoint)
     private readonly checkpointRepository: Repository<PaymentNotificationCheckpoint>,
+    @InjectRepository(ClienteMobileSession)
+    private readonly sessionsRepository: Repository<ClienteMobileSession>,
     @InjectRepository(PagoLegacy, 'legacy_db')
     private readonly pagoRepository: Repository<PagoLegacy>,
     private readonly customerNotificationsService: CustomerNotificationsService,
@@ -85,6 +88,14 @@ export class PaymentNotificationJob {
   private async processPayment(pago: PagoLegacy) {
     const customerId = Number(pago.pgClienteId);
     if (!Number.isFinite(customerId) || customerId <= 0) {
+      return;
+    }
+
+    const hasRegisteredSession = await this.hasRegisteredMobileSession(customerId);
+    if (!hasRegisteredSession) {
+      this.logger.debug(
+        `Pago ${pago.pgId} omitido para notificaciones: el cliente ${customerId} no existe en clientes_mobile_sessions.`,
+      );
       return;
     }
 
@@ -246,6 +257,17 @@ export class PaymentNotificationJob {
         lastProcessedAt: null,
       }),
     );
+  }
+
+  private async hasRegisteredMobileSession(customerId: number) {
+    const total = await this.sessionsRepository.count({
+      where: {
+        clienteId: customerId,
+      },
+      take: 1,
+    });
+
+    return total > 0;
   }
 
   private buildFolio(serie: string | null | undefined, numero: number | string | null | undefined) {
