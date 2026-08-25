@@ -5,6 +5,9 @@ export enum CustomerNotificationType {
   VISIT_DAY = 'visit_day',
   OVERDUE_INVOICES = 'overdue_invoices',
   ORDER_STATUS_UPDATED = 'order_status_updated',
+  PAYMENT_RECEIVED = 'payment_received',
+  INVOICE_PAID = 'invoice_paid',
+  PAYMENT_COMPLEMENT_APPLIED = 'payment_complement_applied',
 }
 
 export enum CustomerNotificationStatus {

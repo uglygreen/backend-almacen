@@ -2,14 +2,16 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Not, Repository } from 'typeorm';
-import { Cliente } from '../../entities';
+import { Cliente, CorreoLegacy } from '../../entities';
 import { DomLegacy } from '../../entities/dom-legacy.entity';
-import { envString } from '../../config/runtime-env';
+import { envNumber, envString } from '../../config/runtime-env';
 import { ClientesCreditoService } from '../clientes-credito/clientes-credito.service';
+import { ClientesMobileOrderWorkflowService } from './clientes-mobile-order-workflow.service';
 import { AddClientesMobileOrderItemDto } from './dto/add-clientes-mobile-order-item.dto';
 import { CreateClientesMobileOrderDraftDto } from './dto/create-clientes-mobile-order-draft.dto';
 import { ListClientesMobileOrdersDto } from './dto/list-clientes-mobile-order-drafts.dto';
@@ -68,9 +70,22 @@ const CFDI_OPTIONS = [
 
 @Injectable()
 export class ClientesMobileOrdersService {
+  private readonly logger = new Logger(ClientesMobileOrdersService.name);
   private readonly catalogImageBaseUrl = envString(
     'CLIENTES_MOBILE_CATALOG_IMAGE_BASE_URL',
     'https://ferremayoristas.com.mx/assets/photos-img/',
+  );
+  private readonly cotizadorLoginUrl = envString(
+    'CLIENTES_MOBILE_COTIZADOR_LOGIN_URL',
+    'https://ferremayoristas.com.mx:3002/cotizador/login',
+  );
+  private readonly cotizadorGenerarPedidoUrl = envString(
+    'CLIENTES_MOBILE_COTIZADOR_GENERAR_PEDIDO_URL',
+    'https://ferremayoristas.com.mx:3002/cotizador/pedido/generar',
+  );
+  private readonly cotizadorTimeoutMs = envNumber(
+    'CLIENTES_MOBILE_COTIZADOR_TIMEOUT_MS',
+    15000,
   );
 
   constructor(
@@ -85,6 +100,7 @@ export class ClientesMobileOrdersService {
     @InjectDataSource('legacy_db')
     private readonly legacyDataSource: DataSource,
     private readonly clientesCreditoService: ClientesCreditoService,
+    private readonly clientesMobileOrderWorkflowService: ClientesMobileOrderWorkflowService,
   ) {}
 
   async listOrders(
@@ -313,7 +329,7 @@ export class ClientesMobileOrdersService {
   }
 
   async submitOrders(clienteId: number, dto: SubmitClientesMobileOrdersDto) {
-    const cliente = await this.findClienteById(clienteId, ['domicilioPrincipal', 'domicilios']);
+    const cliente = await this.findClienteById(clienteId, ['domicilioPrincipal', 'domicilios', 'correos']);
     const uniqueOrderIds = [...new Set(dto.orderIds)];
     const orders = await this.ordersRepository.find({
       where: {
@@ -346,6 +362,7 @@ export class ClientesMobileOrdersService {
     for (const order of orders) {
       this.ensureDraftCanBeSubmitted(order);
       await this.ensureFiscalData(order, cliente);
+      this.ensureExternalSubmitData(order);
 
       const mobileReference = this.buildOrderReference(order, submittedAt);
       order.creditSnapshot = this.buildCreditSnapshot(creditSummary);
@@ -357,20 +374,14 @@ export class ClientesMobileOrdersService {
 
     await this.ordersRepository.save(orders);
 
-    const submittedOrders = await this.ordersRepository.find({
-      where: {
-        id: In(uniqueOrderIds),
-        clienteId,
-      },
-      relations: ['items', 'legacyDocuments'],
-      order: {
-        id: 'ASC',
-      },
-    });
+    const integrationSummary = await this.submitOrdersToCotizador(cliente, orders);
+    const submittedOrders = await this.findOrdersByIds(clienteId, uniqueOrderIds);
 
     return {
       submitted: true,
       count: submittedOrders.length,
+      acceptedCount: submittedOrders.filter((order) => order.status === ClienteMobileOrderStatus.ACCEPTED).length,
+      externalIntegration: integrationSummary,
       orders: await Promise.all(submittedOrders.map((order) => this.mapOrder(order))),
     };
   }
@@ -977,6 +988,19 @@ export class ClientesMobileOrdersService {
     return order;
   }
 
+  private async findOrdersByIds(clienteId: number, orderIds: number[]) {
+    return this.ordersRepository.find({
+      where: {
+        id: In(orderIds),
+        clienteId,
+      },
+      relations: ['items', 'legacyDocuments'],
+      order: {
+        id: 'ASC',
+      },
+    });
+  }
+
   private async findOrderHistory(orderId: number) {
     return this.orderStatusHistoryRepository.find({
       where: { orderId },
@@ -998,6 +1022,198 @@ export class ClientesMobileOrdersService {
     }
 
     return cliente;
+  }
+
+  private async submitOrdersToCotizador(cliente: Cliente, orders: ClienteMobileOrder[]) {
+    const email = this.resolvePrimaryEmail(cliente.correos ?? []);
+    const numeroCliente = this.normalizeNumeroCliente(cliente.numero);
+    if (!numeroCliente) {
+      throw new BadRequestException('No se encontró el numero del cliente para enviar el pedido al cotizador');
+    }
+
+    if (!email) {
+      throw new BadRequestException('No se encontró un correo del cliente para iniciar sesión en el cotizador');
+    }
+
+    const failures: Array<{ orderId: number; message: string }> = [];
+    const acceptedOrderIds: number[] = [];
+    let loginData: { token: string; clienteId: number } | null = null;
+
+    try {
+      loginData = await this.loginCotizador(numeroCliente, email);
+    } catch (error: any) {
+      const message = error?.message ?? 'No se pudo iniciar sesion en el cotizador';
+      for (const order of orders) {
+        failures.push({
+          orderId: order.id,
+          message,
+        });
+      }
+      this.logger.error(`Fallo el login al cotizador para cliente ${cliente.clienteId}: ${message}`);
+    }
+
+    if (!loginData) {
+      return {
+        attempted: orders.length,
+        accepted: 0,
+        pending: orders.length,
+        acceptedOrderIds,
+        pendingOrderIds: orders.map((order) => order.id),
+        failures,
+      };
+    }
+
+    for (const order of orders) {
+      try {
+        await this.generarPedidoCotizador(order, loginData);
+        await this.clientesMobileOrderWorkflowService.changeOrderStatus({
+          orderId: order.id,
+          nextStatus: ClienteMobileOrderStatus.ACCEPTED,
+          changedBy: 'clientes-mobile-orders.submit.external',
+          message: 'Pedido aceptado automaticamente despues de enviarse al cotizador.',
+          notifyCustomer: true,
+          source: 'manual',
+          metadataSource: 'clientes_mobile_orders_submit_external',
+        });
+        acceptedOrderIds.push(order.id);
+      } catch (error: any) {
+        const message = error?.message ?? 'No se pudo enviar el pedido al cotizador';
+        failures.push({
+          orderId: order.id,
+          message,
+        });
+        this.logger.error(
+          `Fallo el envio del pedido mobile ${order.id} al cotizador externo: ${message}`,
+        );
+      }
+    }
+
+    const pendingOrderIds = orders
+      .map((order) => order.id)
+      .filter((orderId) => !acceptedOrderIds.includes(orderId));
+
+    return {
+      attempted: orders.length,
+      accepted: acceptedOrderIds.length,
+      pending: pendingOrderIds.length,
+      acceptedOrderIds,
+      pendingOrderIds,
+      failures,
+    };
+  }
+
+  private async loginCotizador(numero: string, email: string) {
+    const response = await this.fetchJson(this.cotizadorLoginUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        numero,
+        email,
+      }),
+    });
+
+    const token = this.cleanNullableString(response?.data?.token);
+    const clienteId = this.toNullableNumber(response?.data?.id);
+    if (!token || !clienteId) {
+      throw new BadRequestException('La respuesta del login del cotizador no devolvió token o clienteID');
+    }
+
+    return {
+      token,
+      clienteId,
+      raw: response?.data ?? null,
+    };
+  }
+
+  private async generarPedidoCotizador(
+    order: ClienteMobileOrder,
+    loginData: { token: string; clienteId: number },
+  ) {
+    const payload = this.buildCotizadorPedidoPayload(order, loginData.clienteId);
+    return this.fetchJson(this.cotizadorGenerarPedidoUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: loginData.token,
+      },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  private buildCotizadorPedidoPayload(order: ClienteMobileOrder, clienteId: number) {
+    const domicilioId = this.toNullableNumber(order.addressId);
+    if (!domicilioId) {
+      throw new BadRequestException(`El pedido ${order.id} no tiene addressId para enviarse al cotizador`);
+    }
+
+    const usoCfdi = this.cleanNullableString(order.cfdiUse);
+    if (!usoCfdi) {
+      throw new BadRequestException(`El pedido ${order.id} no tiene uso CFDI para enviarse al cotizador`);
+    }
+
+    const productos = (order.items ?? []).map((item) => {
+      const claveProdServ = this.cleanNullableString(item.claveProdServ);
+      const noIdentificacion = this.cleanNullableString(item.sku);
+      const claveUnidad = this.cleanNullableString(item.claveUnidad);
+      const unidad = this.cleanNullableString(item.unidad);
+      const almacen = this.toNullableNumber(item.almacen);
+
+      if (!claveProdServ || !noIdentificacion || !claveUnidad || !unidad || !almacen) {
+        throw new BadRequestException(
+          `El item ${item.id} del pedido ${order.id} no tiene la informacion completa para enviarse al cotizador`,
+        );
+      }
+
+      return {
+        ClaveProdServ: claveProdServ,
+        NoIdentificacion: noIdentificacion,
+        Cantidad: this.toNumber(item.cantidad),
+        ClaveUnidad: claveUnidad,
+        Unidad: unidad,
+        Almacen: almacen,
+      };
+    });
+
+    return {
+      clienteID: clienteId,
+      usoCFDI: usoCfdi,
+      domicilioID: domicilioId,
+      productos,
+      totalPedido: this.toNumber(order.total),
+      observacion: this.cleanNullableString(order.nota) ?? '',
+    };
+  }
+
+  private ensureExternalSubmitData(order: ClienteMobileOrder) {
+    if (!order.items?.length) {
+      throw new BadRequestException(`El pedido ${order.id} no tiene productos para enviarse al cotizador`);
+    }
+
+    if (!this.toNullableNumber(order.addressId)) {
+      throw new BadRequestException(`El pedido ${order.id} no tiene direccion para enviarse al cotizador`);
+    }
+
+    if (!this.cleanNullableString(order.cfdiUse)) {
+      throw new BadRequestException(`El pedido ${order.id} no tiene uso CFDI para enviarse al cotizador`);
+    }
+
+    for (const item of order.items ?? []) {
+      if (
+        !this.cleanNullableString(item.claveProdServ)
+        || !this.cleanNullableString(item.sku)
+        || !this.cleanNullableString(item.claveUnidad)
+        || !this.cleanNullableString(item.unidad)
+        || !this.toNullableNumber(item.almacen)
+      ) {
+        throw new BadRequestException(
+          `El pedido ${order.id} tiene productos sin datos SAT/logisticos completos para enviarse al cotizador`,
+        );
+      }
+    }
   }
 
   private async findClienteAddress(cliente: Cliente, addressId: number) {
@@ -1179,9 +1395,75 @@ export class ClientesMobileOrdersService {
     return this.toNumber(product.lote) > 0 ? product.lote.toString() : null;
   }
 
+  private resolvePrimaryEmail(correos: CorreoLegacy[]) {
+    const preferred = correos.find((correo) => this.cleanNullableString(correo.cEnviar) === 'S');
+    const selected = preferred ?? correos[0];
+    return this.cleanNullableString(selected?.correo);
+  }
+
+  private async fetchJson(url: string, init: RequestInit) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.cotizadorTimeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+      const rawText = await response.text();
+      const payload = rawText ? this.safeParseJson(rawText) : null;
+
+      if (!response.ok) {
+        throw new BadRequestException(
+          `La integracion externa respondio ${response.status}: ${this.extractExternalErrorMessage(payload, rawText)}`,
+        );
+      }
+
+      if (payload && typeof payload === 'object' && payload.status === false) {
+        throw new BadRequestException(
+          `La integracion externa rechazo la solicitud: ${this.extractExternalErrorMessage(payload, rawText)}`,
+        );
+      }
+
+      return payload;
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        throw new BadRequestException('La integracion externa excedio el tiempo de espera');
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private safeParseJson(rawText: string) {
+    try {
+      return JSON.parse(rawText);
+    } catch {
+      return rawText;
+    }
+  }
+
+  private extractExternalErrorMessage(payload: any, rawText: string) {
+    if (typeof payload === 'string') {
+      return payload.trim() || 'Respuesta vacia';
+    }
+
+    return this.cleanNullableString(payload?.message)
+      ?? this.cleanNullableString(payload?.error)
+      ?? this.cleanNullableString(rawText)
+      ?? 'Respuesta sin detalle';
+  }
+
   private cleanNullableString(value: string | null | undefined) {
     const normalized = (value ?? '').trim();
     return normalized || null;
+  }
+
+  private toNullableNumber(value: unknown) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
   }
 
   private toNumber(value: unknown) {

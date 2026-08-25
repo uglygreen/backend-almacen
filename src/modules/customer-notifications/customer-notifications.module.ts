@@ -6,18 +6,26 @@ import {
   CustomerNotification,
   DeviceToken,
   DocLegacy,
+  PagoLegacy,
+  PaymentNotificationCheckpoint,
 } from '../../entities';
 import { ClientesMobileModule } from '../clientes-mobile/clientes-mobile.module';
 import { CustomerNotificationsController } from './customer-notifications.controller';
 import { CustomerNotificationsService } from './customer-notifications.service';
 import { OverdueInvoicesNotificationJob } from './overdue-invoices-notification.job';
+import { PaymentNotificationJob } from './payment-notification.job';
 import { PushNotificationService } from './push-notification.service';
 import { VisitDayNotificationJob } from './visit-day-notification.job';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([DeviceToken, CustomerNotification, ClienteMobileSession]),
-    TypeOrmModule.forFeature([Cliente, DocLegacy], 'legacy_db'),
+    TypeOrmModule.forFeature([
+      DeviceToken,
+      CustomerNotification,
+      ClienteMobileSession,
+      PaymentNotificationCheckpoint,
+    ]),
+    TypeOrmModule.forFeature([Cliente, DocLegacy, PagoLegacy], 'legacy_db'),
     ClientesMobileModule,
   ],
   controllers: [CustomerNotificationsController],
@@ -26,6 +34,7 @@ import { VisitDayNotificationJob } from './visit-day-notification.job';
     PushNotificationService,
     VisitDayNotificationJob,
     OverdueInvoicesNotificationJob,
+    PaymentNotificationJob,
   ],
   exports: [CustomerNotificationsService, PushNotificationService],
 })

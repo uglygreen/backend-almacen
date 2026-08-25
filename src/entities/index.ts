@@ -299,5 +299,6 @@ export * from './garantia.entity';
 export * from './inv-legacy.entity';
 export * from './nomalm-legacy.entity';
 export * from './pagos-legacy.entity';
+export * from './payment-notification-checkpoint.entity';
 export * from './personal.entity';
 export * from './unidad-legacy.entity';
