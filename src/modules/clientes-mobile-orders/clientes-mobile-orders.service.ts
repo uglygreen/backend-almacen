@@ -1070,7 +1070,7 @@ export class ClientesMobileOrdersService {
           orderId: order.id,
           nextStatus: ClienteMobileOrderStatus.ACCEPTED,
           changedBy: 'clientes-mobile-orders.submit.external',
-          message: 'Pedido aceptado automaticamente despues de enviarse al cotizador.',
+          message: 'Su pedido fue aceptado, en breve sera procesado por nuestro equipo.',
           notifyCustomer: true,
           source: 'manual',
           metadataSource: 'clientes_mobile_orders_submit_external',
