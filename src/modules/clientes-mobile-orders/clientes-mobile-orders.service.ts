@@ -1037,7 +1037,7 @@ export class ClientesMobileOrdersService {
 
     const failures: Array<{ orderId: number; message: string }> = [];
     const acceptedOrderIds: number[] = [];
-    let loginData: { token: string; clienteId: number } | null = null;
+    let loginData: { token: string; raw: any } | null = null;
 
     try {
       loginData = await this.loginCotizador(numeroCliente, email);
@@ -1116,24 +1116,22 @@ export class ClientesMobileOrdersService {
     });
 
     const token = this.cleanNullableString(response?.data?.token);
-    const clienteId = this.toNullableNumber(response?.data?.id);
-    if (!token || !clienteId) {
-      throw new BadRequestException('La respuesta del login del cotizador no devolvió token o clienteID');
+    if (!token) {
+      throw new BadRequestException('La respuesta del login del cotizador no devolvió token');
     }
 
     return {
       token,
-      clienteId,
       raw: response?.data ?? null,
     };
   }
 
   private async generarPedidoCotizador(
     order: ClienteMobileOrder,
-    loginData: { token: string; clienteId: number },
+    loginData: { token: string; raw: any },
   ) {
-    const payload = this.buildCotizadorPedidoPayload(order, loginData.clienteId);
-    return this.fetchJson(this.cotizadorGenerarPedidoUrl, {
+    const payload = this.buildCotizadorPedidoPayload(order, order.clienteId);
+    const response = await this.fetchJson(this.cotizadorGenerarPedidoUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1142,6 +1140,12 @@ export class ClientesMobileOrdersService {
       },
       body: JSON.stringify(payload),
     });
+
+    this.logger.log(
+      `Respuesta de cotizador/pedido/generar para pedido ${order.id}: ${this.stringifyForLog(response)}`,
+    );
+
+    return response;
   }
 
   private buildCotizadorPedidoPayload(order: ClienteMobileOrder, clienteId: number) {
@@ -1417,12 +1421,6 @@ export class ClientesMobileOrdersService {
         );
       }
 
-      if (payload && typeof payload === 'object' && payload.status === false) {
-        throw new BadRequestException(
-          `La integracion externa rechazo la solicitud: ${this.extractExternalErrorMessage(payload, rawText)}`,
-        );
-      }
-
       return payload;
     } catch (error: any) {
       if (error?.name === 'AbortError') {
@@ -1440,6 +1438,22 @@ export class ClientesMobileOrdersService {
       return JSON.parse(rawText);
     } catch {
       return rawText;
+    }
+  }
+
+  private stringifyForLog(value: unknown) {
+    if (value == null) {
+      return 'null';
+    }
+
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '[unserializable-response]';
     }
   }
 
