@@ -1160,9 +1160,8 @@ export class ClientesMobileOrdersService {
       const noIdentificacion = this.cleanNullableString(item.sku);
       const claveUnidad = this.cleanNullableString(item.claveUnidad);
       const unidad = this.cleanNullableString(item.unidad);
-      const almacen = this.toNullableNumber(item.almacen);
 
-      if (!claveProdServ || !noIdentificacion || !claveUnidad || !unidad || !almacen) {
+      if (!claveProdServ || !noIdentificacion || !claveUnidad || !unidad) {
         throw new BadRequestException(
           `El item ${item.id} del pedido ${order.id} no tiene la informacion completa para enviarse al cotizador`,
         );
@@ -1174,7 +1173,7 @@ export class ClientesMobileOrdersService {
         Cantidad: this.toNumber(item.cantidad),
         ClaveUnidad: claveUnidad,
         Unidad: unidad,
-        Almacen: almacen,
+        Almacen: 1,
       };
     });
 
@@ -1207,7 +1206,6 @@ export class ClientesMobileOrdersService {
         || !this.cleanNullableString(item.sku)
         || !this.cleanNullableString(item.claveUnidad)
         || !this.cleanNullableString(item.unidad)
-        || !this.toNullableNumber(item.almacen)
       ) {
         throw new BadRequestException(
           `El pedido ${order.id} tiene productos sin datos SAT/logisticos completos para enviarse al cotizador`,
