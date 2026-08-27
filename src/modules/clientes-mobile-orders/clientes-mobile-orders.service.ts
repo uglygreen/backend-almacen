@@ -1175,7 +1175,7 @@ export class ClientesMobileOrdersService {
         NoIdentificacion: noIdentificacion,
         Cantidad: this.toNumber(item.cantidad),
         ClaveUnidad: claveUnidad,
-        Unidad: item.claveUnidad ?? 'PZ',
+        Unidad: item.unidad || 'PZ',
         Almacen: 1,
       };
     });
